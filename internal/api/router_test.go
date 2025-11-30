@@ -18,7 +18,7 @@ func TestHealthCheck(t *testing.T) {
 	searchHandler := handlers.NewGoogleSearchHandler("test-api-key")
 
 	// Create router
-	router := NewRouter(searchHandler)
+	router := NewRouter(searchHandler, nil)
 
 	// Create test request
 	req, err := http.NewRequest(http.MethodGet, "/health", nil)
@@ -45,7 +45,7 @@ func TestHealthCheck(t *testing.T) {
 // TestHealthCheck_ContentType tests that health check returns JSON content type
 func TestHealthCheck_ContentType(t *testing.T) {
 	searchHandler := handlers.NewGoogleSearchHandler("test-api-key")
-	router := NewRouter(searchHandler)
+	router := NewRouter(searchHandler, nil)
 
 	req, err := http.NewRequest(http.MethodGet, "/health", nil)
 	require.NoError(t, err)
@@ -60,7 +60,7 @@ func TestHealthCheck_ContentType(t *testing.T) {
 // TestSwaggerRoute tests that the Swagger UI route is registered
 func TestSwaggerRoute(t *testing.T) {
 	searchHandler := handlers.NewGoogleSearchHandler("test-api-key")
-	router := NewRouter(searchHandler)
+	router := NewRouter(searchHandler, nil)
 
 	// Test the base swagger route - it should not return 404 for method not allowed
 	// The route exists even if the handler returns 404 due to missing docs in test env
@@ -87,7 +87,7 @@ func TestSwaggerRoute(t *testing.T) {
 // TestSearchRoute_Exists tests that the search route is registered
 func TestSearchRoute_Exists(t *testing.T) {
 	searchHandler := handlers.NewGoogleSearchHandler("test-api-key")
-	router := NewRouter(searchHandler)
+	router := NewRouter(searchHandler, nil)
 
 	// Test with empty body - should return 400 (bad request) not 404 (not found)
 	req, err := http.NewRequest(http.MethodPost, "/api/v1/search", nil)
@@ -106,7 +106,7 @@ func TestSearchRoute_Exists(t *testing.T) {
 // TestSearchRoute_MethodNotAllowed tests that only POST is allowed on search route
 func TestSearchRoute_MethodNotAllowed(t *testing.T) {
 	searchHandler := handlers.NewGoogleSearchHandler("test-api-key")
-	router := NewRouter(searchHandler)
+	router := NewRouter(searchHandler, nil)
 
 	methods := []string{http.MethodGet, http.MethodPut, http.MethodDelete, http.MethodPatch}
 
@@ -128,7 +128,7 @@ func TestSearchRoute_MethodNotAllowed(t *testing.T) {
 // TestNotFoundRoute tests that non-existent routes return 404
 func TestNotFoundRoute(t *testing.T) {
 	searchHandler := handlers.NewGoogleSearchHandler("test-api-key")
-	router := NewRouter(searchHandler)
+	router := NewRouter(searchHandler, nil)
 
 	routes := []string{
 		"/nonexistent",
@@ -153,7 +153,7 @@ func TestNotFoundRoute(t *testing.T) {
 // TestRouterInitialization tests that the router initializes correctly
 func TestRouterInitialization(t *testing.T) {
 	searchHandler := handlers.NewGoogleSearchHandler("test-api-key")
-	router := NewRouter(searchHandler)
+	router := NewRouter(searchHandler, nil)
 
 	assert.NotNil(t, router)
 }
@@ -161,7 +161,7 @@ func TestRouterInitialization(t *testing.T) {
 // TestHealthCheck_DifferentMethods tests health endpoint with different HTTP methods
 func TestHealthCheck_DifferentMethods(t *testing.T) {
 	searchHandler := handlers.NewGoogleSearchHandler("test-api-key")
-	router := NewRouter(searchHandler)
+	router := NewRouter(searchHandler, nil)
 
 	testCases := []struct {
 		method       string

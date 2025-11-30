@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
+
+	"webstar/noturno-leadgen-worker/internal/dto"
 
 	"github.com/supabase-community/supabase-go"
 )
@@ -143,4 +146,139 @@ func (h *SupabaseHandler) GetRowByID(table, columns string, id interface{}) (map
 // GetClient returns the underlying Supabase client for advanced operations
 func (h *SupabaseHandler) GetClient() *supabase.Client {
 	return h.client
+}
+
+// GetICP retrieves an ICP by its ID
+func (h *SupabaseHandler) GetICP(id string) (*dto.ICP, error) {
+	log.Printf("[SupabaseHandler] GetICP: id=%s", id)
+
+	data, _, err := h.client.From("icps").Select("*", "exact", false).Eq("id", id).Execute()
+	if err != nil {
+		log.Printf("[SupabaseHandler] Failed to get ICP: %v", err)
+		return nil, fmt.Errorf("failed to get ICP: %w", err)
+	}
+
+	var icps []dto.ICP
+	if err := json.Unmarshal(data, &icps); err != nil {
+		log.Printf("[SupabaseHandler] Failed to parse ICP response: %v", err)
+		return nil, fmt.Errorf("failed to parse ICP response: %w", err)
+	}
+
+	if len(icps) == 0 {
+		return nil, fmt.Errorf("ICP not found with id %s", id)
+	}
+
+	log.Printf("[SupabaseHandler] Found ICP: %s", icps[0].Name)
+	return &icps[0], nil
+}
+
+// UpdateJobStatus updates the status and related fields of a job
+func (h *SupabaseHandler) UpdateJobStatus(jobID string, status string, leadsGenerated *int, errorMessage *string) error {
+	log.Printf("[SupabaseHandler] UpdateJobStatus: jobID=%s, status=%s", jobID, status)
+
+	update := map[string]interface{}{
+		"status": status,
+	}
+
+	now := time.Now().UTC()
+
+	switch status {
+	case "processing":
+		update["started_at"] = now.Format(time.RFC3339)
+	case "completed":
+		update["completed_at"] = now.Format(time.RFC3339)
+		if leadsGenerated != nil {
+			update["leads_generated"] = *leadsGenerated
+		}
+	case "failed":
+		update["completed_at"] = now.Format(time.RFC3339)
+		if errorMessage != nil {
+			update["error_message"] = *errorMessage
+		}
+	}
+
+	_, _, err := h.client.From("jobs").Update(update, "", "").Eq("id", jobID).Execute()
+	if err != nil {
+		log.Printf("[SupabaseHandler] Failed to update job status: %v", err)
+		return fmt.Errorf("failed to update job status: %w", err)
+	}
+
+	log.Printf("[SupabaseHandler] Job status updated successfully")
+	return nil
+}
+
+// InsertLead inserts a new lead and returns the generated ID
+func (h *SupabaseHandler) InsertLead(lead *dto.Lead) (string, error) {
+	log.Printf("[SupabaseHandler] InsertLead: company=%s, job_id=%s", lead.CompanyName, lead.JobID)
+
+	insertData := map[string]interface{}{
+		"job_id":       lead.JobID,
+		"user_id":      lead.UserID,
+		"company_name": lead.CompanyName,
+		"contact_name": lead.ContactName,
+		"source":       lead.Source,
+	}
+
+	if len(lead.Emails) > 0 {
+		insertData["emails"] = lead.Emails
+	}
+	if len(lead.Phones) > 0 {
+		insertData["phones"] = lead.Phones
+	}
+	if lead.Website != nil {
+		insertData["website"] = *lead.Website
+	}
+	if lead.ContactRole != "" {
+		insertData["contact_role"] = lead.ContactRole
+	}
+	if lead.Address != "" {
+		insertData["address"] = lead.Address
+	}
+	if len(lead.SocialMedia) > 0 {
+		insertData["social_media"] = lead.SocialMedia
+	}
+
+	data, _, err := h.client.From("leads").Insert(insertData, false, "", "", "").Execute()
+	if err != nil {
+		log.Printf("[SupabaseHandler] Failed to insert lead: %v", err)
+		return "", fmt.Errorf("failed to insert lead: %w", err)
+	}
+
+	// Parse response to get the generated ID
+	var inserted []map[string]interface{}
+	if err := json.Unmarshal(data, &inserted); err != nil {
+		log.Printf("[SupabaseHandler] Failed to parse insert response: %v", err)
+		return "", fmt.Errorf("failed to parse insert response: %w", err)
+	}
+
+	if len(inserted) == 0 {
+		return "", fmt.Errorf("no lead was inserted")
+	}
+
+	leadID, ok := inserted[0]["id"].(string)
+	if !ok {
+		return "", fmt.Errorf("failed to get lead ID from response")
+	}
+
+	log.Printf("[SupabaseHandler] Lead inserted successfully: id=%s", leadID)
+	return leadID, nil
+}
+
+// InsertPreCallReport inserts a pre-call report for a lead
+func (h *SupabaseHandler) InsertPreCallReport(leadID, content string) error {
+	log.Printf("[SupabaseHandler] InsertPreCallReport: lead_id=%s", leadID)
+
+	insertData := map[string]interface{}{
+		"lead_id": leadID,
+		"content": content,
+	}
+
+	_, _, err := h.client.From("pre_call_reports").Insert(insertData, false, "", "", "").Execute()
+	if err != nil {
+		log.Printf("[SupabaseHandler] Failed to insert pre-call report: %v", err)
+		return fmt.Errorf("failed to insert pre-call report: %w", err)
+	}
+
+	log.Printf("[SupabaseHandler] Pre-call report inserted successfully")
+	return nil
 }

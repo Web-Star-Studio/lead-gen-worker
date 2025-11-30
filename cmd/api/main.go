@@ -4,8 +4,10 @@ import (
 	"log"
 
 	"webstar/noturno-leadgen-worker/internal/api"
+	"webstar/noturno-leadgen-worker/internal/api/controllers"
 	"webstar/noturno-leadgen-worker/internal/config"
 	"webstar/noturno-leadgen-worker/internal/handlers"
+	"webstar/noturno-leadgen-worker/internal/services"
 
 	_ "webstar/noturno-leadgen-worker/docs" // Swagger generated docs
 )
@@ -67,8 +69,20 @@ func main() {
 		log.Printf("SUPABASE_URL or SUPABASE_KEY not set - database access disabled")
 	}
 
-	// supabaseHandler is available for use by other handlers/controllers
-	_ = supabaseHandler // TODO: Wire to handlers that need database access
+	// Initialize JobProcessor and WebhookController if Supabase and webhook secret are configured
+	var webhookController *controllers.WebhookController
+	if supabaseHandler != nil && cfg.WebhookSecret != "" {
+		jobProcessor := services.NewJobProcessor(supabaseHandler, searchHandler)
+		webhookController = controllers.NewWebhookController(cfg.WebhookSecret, jobProcessor)
+		log.Printf("WebhookController initialized - job webhook endpoint enabled")
+	} else {
+		if supabaseHandler == nil {
+			log.Printf("SupabaseHandler not initialized - webhook endpoint disabled")
+		}
+		if cfg.WebhookSecret == "" {
+			log.Printf("WEBHOOK_SECRET not set - webhook endpoint disabled")
+		}
+	}
 
 	// Initialize DataExtractorHandler if Google API key or Vertex AI is configured
 	if cfg.GoogleAPIKey != "" || cfg.UseVertexAI {
@@ -126,7 +140,7 @@ func main() {
 	}
 
 	// Setup router
-	router := api.NewRouter(searchHandler)
+	router := api.NewRouter(searchHandler, webhookController)
 
 	// Start server
 	log.Printf("Server starting on port %s", cfg.Port)
