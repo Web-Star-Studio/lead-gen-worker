@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"net/url"
 
 	g "github.com/serpapi/google-search-results-golang"
 )
@@ -146,11 +148,23 @@ func (h *GoogleSearchHandler) SetPreCallReportHandler(handler *PreCallReportHand
 
 // getCanonicalLocation fetches the canonical location name from SerpAPI
 func (h *GoogleSearchHandler) getCanonicalLocation(location string) (string, error) {
-	resp, err := http.Get(fmt.Sprintf("https://serpapi.com/locations.json?q=%s&limit=1", location))
+	// URL encode the location parameter
+	encodedLocation := url.QueryEscape(location)
+	requestURL := fmt.Sprintf("https://serpapi.com/locations.json?q=%s&limit=1", encodedLocation)
+
+	log.Printf("[GoogleSearchHandler] Fetching canonical location for: %s", location)
+
+	resp, err := http.Get(requestURL)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch location: %w", err)
 	}
 	defer resp.Body.Close()
+
+	// Check for non-200 status codes
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("location API returned status %d: %s", resp.StatusCode, string(body))
+	}
 
 	var locations []SerpAPILocation
 	if err := json.NewDecoder(resp.Body).Decode(&locations); err != nil {
@@ -158,9 +172,12 @@ func (h *GoogleSearchHandler) getCanonicalLocation(location string) (string, err
 	}
 
 	if len(locations) == 0 {
-		return "", fmt.Errorf("no location found for: %s", location)
+		// Fallback: use the original location string if no canonical found
+		log.Printf("[GoogleSearchHandler] No canonical location found, using original: %s", location)
+		return location, nil
 	}
 
+	log.Printf("[GoogleSearchHandler] Resolved location: %s -> %s", location, locations[0].CanonicalName)
 	return locations[0].CanonicalName, nil
 }
 
