@@ -2,10 +2,8 @@ package controllers
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"net/http"
-	"strings"
 
 	"webstar/noturno-leadgen-worker/internal/dto"
 	"webstar/noturno-leadgen-worker/internal/services"
@@ -53,32 +51,12 @@ func (c *WebhookController) HandleJobCreated(ctx *gin.Context) {
 		return
 	}
 
-	// 2. Parse webhook payload
-	var payload dto.WebhookPayload
-	if err := ctx.ShouldBindJSON(&payload); err != nil {
-		log.Printf("[WebhookController] Failed to parse webhook payload: %v", err)
-		ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{
-			Error: "Invalid webhook payload",
-		})
-		return
-	}
-
-	log.Printf("[WebhookController] Received webhook: type=%s, table=%s, schema=%s",
-		payload.Type, payload.Table, payload.Schema)
-
-	// 3. Ignore if not INSERT on jobs table
-	if strings.ToUpper(payload.Type) != "INSERT" || payload.Table != "jobs" {
-		log.Printf("[WebhookController] Ignoring webhook: not an INSERT on jobs table")
-		ctx.JSON(http.StatusOK, gin.H{"status": "ignored"})
-		return
-	}
-
-	// 4. Parse Job from record
+	// 2. Parse job payload directly (custom format from frontend)
 	var job dto.Job
-	if err := json.Unmarshal(payload.Record, &job); err != nil {
-		log.Printf("[WebhookController] Failed to parse job record: %v", err)
+	if err := ctx.ShouldBindJSON(&job); err != nil {
+		log.Printf("[WebhookController] Failed to parse job payload: %v", err)
 		ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{
-			Error: "Invalid job record in webhook payload",
+			Error: "Invalid job payload",
 		})
 		return
 	}

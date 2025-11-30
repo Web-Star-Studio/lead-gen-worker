@@ -1,33 +1,23 @@
 package dto
 
 import (
-	"encoding/json"
 	"time"
 )
 
-// WebhookPayload represents the payload sent by Supabase Database Webhooks
-type WebhookPayload struct {
-	Type      string          `json:"type"`       // INSERT, UPDATE, DELETE
-	Table     string          `json:"table"`      // Table name
-	Schema    string          `json:"schema"`     // Schema name (usually "public")
-	Record    json.RawMessage `json:"record"`     // New record data
-	OldRecord json.RawMessage `json:"old_record"` // Previous record data (for UPDATE/DELETE)
-}
-
 // Job represents a job record from the jobs table
 type Job struct {
-	ID              string     `json:"id"`
+	ID              string     `json:"job_id"`
 	UserID          string     `json:"user_id"`
-	Status          string     `json:"status"` // pending, processing, completed, failed
+	Status          string     `json:"status,omitempty"` // pending, processing, completed, failed
 	ICPID           *string    `json:"icp_id,omitempty"`
 	ICPName         string     `json:"icp_name"`
 	Region          string     `json:"region"`
 	LeadQuantity    int        `json:"lead_quantity"`
 	ExcludedDomains []string   `json:"excluded_domains"`
 	RequiredFields  []string   `json:"required_fields"`
-	LeadsGenerated  int        `json:"leads_generated"`
+	LeadsGenerated  int        `json:"leads_generated,omitempty"`
 	ErrorMessage    *string    `json:"error_message,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
+	CreatedAt       time.Time  `json:"created_at,omitempty"`
 	StartedAt       *time.Time `json:"started_at,omitempty"`
 	CompletedAt     *time.Time `json:"completed_at,omitempty"`
 }
