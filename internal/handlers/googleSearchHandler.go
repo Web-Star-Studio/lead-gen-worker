@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -19,9 +20,11 @@ const (
 )
 
 type GoogleSearchHandler struct {
-	apiKey           string
-	params           GoogleSearchParams
-	firecrawlHandler *FirecrawlHandler
+	apiKey               string
+	params               GoogleSearchParams
+	firecrawlHandler     *FirecrawlHandler
+	dataExtractorHandler *DataExtractorHandler
+	preCallReportHandler *PreCallReportHandler
 }
 
 type GoogleSearchParams struct {
@@ -75,6 +78,10 @@ type OrganicResult struct {
 	ScrapedContent string `json:"scraped_content,omitempty"`
 	// ScrapeError contains error message if scraping failed
 	ScrapeError string `json:"scrape_error,omitempty"`
+	// ExtractedData contains structured company data extracted by DataExtractorHandler
+	ExtractedData *ExtractedData `json:"extracted_data,omitempty"`
+	// PreCallReport contains the AI-generated company summary for sales calls
+	PreCallReport string `json:"pre_call_report,omitempty"`
 }
 
 // Pagination represents the pagination info from SerpAPI
@@ -123,6 +130,18 @@ func NewGoogleSearchHandler(apiKey string) *GoogleSearchHandler {
 // When set, the Search method will automatically scrape each organic result's website
 func (h *GoogleSearchHandler) SetFirecrawlHandler(handler *FirecrawlHandler) {
 	h.firecrawlHandler = handler
+}
+
+// SetDataExtractorHandler sets the DataExtractorHandler for extracting company data
+// When set, the Search method will automatically extract structured data from scraped content
+func (h *GoogleSearchHandler) SetDataExtractorHandler(handler *DataExtractorHandler) {
+	h.dataExtractorHandler = handler
+}
+
+// SetPreCallReportHandler sets the PreCallReportHandler for generating pre-call reports
+// When set, the Search method will automatically generate AI-powered pre-call reports for each result
+func (h *GoogleSearchHandler) SetPreCallReportHandler(handler *PreCallReportHandler) {
+	h.preCallReportHandler = handler
 }
 
 // getCanonicalLocation fetches the canonical location name from SerpAPI
@@ -327,6 +346,54 @@ func (h *GoogleSearchHandler) Search(params GoogleSearchParams) (*SearchResponse
 		}
 	} else {
 		log.Printf("[GoogleSearchHandler] Skipping Firecrawl scraping (handler nil or no results)")
+	}
+
+	// If DataExtractorHandler is configured, extract company data from scraped content
+	if h.dataExtractorHandler != nil && len(result.OrganicResults) > 0 {
+		log.Printf("[GoogleSearchHandler] Starting data extraction for %d results", len(result.OrganicResults))
+		ctx := context.Background()
+		extractedMap := h.dataExtractorHandler.ExtractFromResults(ctx, result.OrganicResults)
+
+		// Enrich organic results with extracted data
+		for i := range result.OrganicResults {
+			link := result.OrganicResults[i].Link
+			if extracted, exists := extractedMap[link]; exists {
+				result.OrganicResults[i].ExtractedData = extracted
+			}
+		}
+
+		successCount := 0
+		for _, extracted := range extractedMap {
+			if extracted.Success {
+				successCount++
+			}
+		}
+		log.Printf("[GoogleSearchHandler] Data extraction complete: %d/%d successful", successCount, len(extractedMap))
+	} else {
+		log.Printf("[GoogleSearchHandler] Skipping data extraction (handler nil or no results)")
+	}
+
+	// If PreCallReportHandler is configured, generate pre-call reports
+	log.Printf("[GoogleSearchHandler] preCallReportHandler is nil: %v, organic results count: %d", h.preCallReportHandler == nil, len(result.OrganicResults))
+	if h.preCallReportHandler != nil && len(result.OrganicResults) > 0 {
+		log.Printf("[GoogleSearchHandler] Starting pre-call report generation for %d results", len(result.OrganicResults))
+		ctx := context.Background()
+		reports := h.preCallReportHandler.GenerateReports(ctx, result.OrganicResults)
+
+		// Enrich organic results with pre-call report (company_summary only)
+		successCount := 0
+		for i := range result.OrganicResults {
+			link := result.OrganicResults[i].Link
+			if report, exists := reports[link]; exists {
+				if report.Success {
+					result.OrganicResults[i].PreCallReport = report.CompanySummary
+					successCount++
+				}
+			}
+		}
+		log.Printf("[GoogleSearchHandler] Pre-call report generation complete: %d/%d successful", successCount, len(reports))
+	} else {
+		log.Printf("[GoogleSearchHandler] Skipping pre-call report generation (handler nil or no results)")
 	}
 
 	return result, nil

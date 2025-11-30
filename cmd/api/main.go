@@ -52,6 +52,79 @@ func main() {
 		log.Printf("FIRECRAWL_API_KEY not set - website scraping disabled")
 	}
 
+	// Initialize SupabaseHandler if credentials are configured
+	var supabaseHandler *handlers.SupabaseHandler
+	if cfg.SupabaseURL != "" && cfg.SupabaseKey != "" {
+		var err error
+		supabaseHandler, err = handlers.NewSupabaseHandler(cfg.SupabaseURL, cfg.SupabaseKey)
+		if err != nil {
+			log.Printf("Warning: Failed to initialize SupabaseHandler: %v", err)
+			log.Printf("Continuing without Supabase functionality")
+		} else {
+			log.Printf("SupabaseHandler initialized - database access enabled")
+		}
+	} else {
+		log.Printf("SUPABASE_URL or SUPABASE_KEY not set - database access disabled")
+	}
+
+	// supabaseHandler is available for use by other handlers/controllers
+	_ = supabaseHandler // TODO: Wire to handlers that need database access
+
+	// Initialize DataExtractorHandler if Google API key or Vertex AI is configured
+	if cfg.GoogleAPIKey != "" || cfg.UseVertexAI {
+		dataExtractorHandler, err := handlers.NewDataExtractorHandler(handlers.DataExtractorConfig{
+			APIKey:      cfg.GoogleAPIKey,
+			UseVertexAI: cfg.UseVertexAI,
+			GCPProject:  cfg.GCPProject,
+			GCPLocation: cfg.GCPLocation,
+			// Use flash model for faster extraction
+			Model: handlers.DefaultExtractorModel,
+		})
+		if err != nil {
+			log.Printf("Warning: Failed to initialize DataExtractorHandler: %v", err)
+			log.Printf("Continuing without data extraction functionality")
+		} else {
+			searchHandler.SetDataExtractorHandler(dataExtractorHandler)
+			backend := "Google AI Studio"
+			if cfg.UseVertexAI {
+				backend = "Vertex AI"
+			}
+			log.Printf("DataExtractorHandler initialized - data extraction enabled (backend: %s, model: %s)",
+				backend, handlers.DefaultExtractorModel)
+		}
+	} else {
+		log.Printf("GOOGLE_API_KEY or Vertex AI not configured - data extraction disabled")
+	}
+
+	// Initialize PreCallReportHandler if Google API key or Vertex AI is configured
+	if cfg.GoogleAPIKey != "" || cfg.UseVertexAI {
+		preCallReportHandler, err := handlers.NewPreCallReportHandler(handlers.PreCallReportConfig{
+			APIKey:      cfg.GoogleAPIKey,
+			Model:       cfg.GeminiModel,
+			UseVertexAI: cfg.UseVertexAI,
+			GCPProject:  cfg.GCPProject,
+			GCPLocation: cfg.GCPLocation,
+		})
+		if err != nil {
+			log.Printf("Warning: Failed to initialize PreCallReportHandler: %v", err)
+			log.Printf("Continuing without pre-call report generation")
+		} else {
+			searchHandler.SetPreCallReportHandler(preCallReportHandler)
+			backend := "Google AI Studio"
+			if cfg.UseVertexAI {
+				backend = "Vertex AI"
+			}
+			model := cfg.GeminiModel
+			if model == "" {
+				model = handlers.DefaultGeminiModel
+			}
+			log.Printf("PreCallReportHandler initialized - pre-call report generation enabled (backend: %s, model: %s)",
+				backend, model)
+		}
+	} else {
+		log.Printf("GOOGLE_API_KEY or Vertex AI not configured - pre-call report generation disabled")
+	}
+
 	// Setup router
 	router := api.NewRouter(searchHandler)
 
