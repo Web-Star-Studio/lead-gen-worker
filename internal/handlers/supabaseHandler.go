@@ -172,6 +172,30 @@ func (h *SupabaseHandler) GetICP(id string) (*dto.ICP, error) {
 	return &icps[0], nil
 }
 
+// GetBusinessProfile retrieves a business profile by its ID
+func (h *SupabaseHandler) GetBusinessProfile(id string) (*dto.BusinessProfile, error) {
+	log.Printf("[SupabaseHandler] GetBusinessProfile: id=%s", id)
+
+	data, _, err := h.client.From("business_profiles").Select("*", "exact", false).Eq("id", id).Execute()
+	if err != nil {
+		log.Printf("[SupabaseHandler] Failed to get BusinessProfile: %v", err)
+		return nil, fmt.Errorf("failed to get business profile: %w", err)
+	}
+
+	var profiles []dto.BusinessProfile
+	if err := json.Unmarshal(data, &profiles); err != nil {
+		log.Printf("[SupabaseHandler] Failed to parse BusinessProfile response: %v", err)
+		return nil, fmt.Errorf("failed to parse business profile response: %w", err)
+	}
+
+	if len(profiles) == 0 {
+		return nil, fmt.Errorf("business profile not found with id %s", id)
+	}
+
+	log.Printf("[SupabaseHandler] Found BusinessProfile: %s", profiles[0].CompanyName)
+	return &profiles[0], nil
+}
+
 // UpdateJobStatus updates the status and related fields of a job
 func (h *SupabaseHandler) UpdateJobStatus(jobID string, status string, leadsGenerated *int, errorMessage *string) error {
 	log.Printf("[SupabaseHandler] UpdateJobStatus: jobID=%s, status=%s", jobID, status)

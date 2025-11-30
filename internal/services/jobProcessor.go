@@ -36,7 +36,22 @@ func (p *JobProcessor) ProcessJob(ctx context.Context, job *dto.Job) {
 		return
 	}
 
-	// 2. Fetch ICP if icp_id is provided
+	// 2. Fetch Business Profile if business_profile is provided
+	var businessProfile *dto.BusinessProfile
+	if job.BusinessProfileID != nil && *job.BusinessProfileID != "" {
+		var err error
+		businessProfile, err = p.supabase.GetBusinessProfile(*job.BusinessProfileID)
+		if err != nil {
+			log.Printf("[JobProcessor] Warning: Failed to get BusinessProfile: %v (continuing without personalization)", err)
+			// Don't fail the job, just continue without personalization
+		} else {
+			// Set business profile on the search handler's pre-call report handler
+			p.searchHandler.SetBusinessProfile(businessProfile)
+			defer p.searchHandler.ClearBusinessProfile() // Clear after processing
+		}
+	}
+
+	// 3. Fetch ICP if icp_id is provided
 	var icp *dto.ICP
 	if job.ICPID != nil && *job.ICPID != "" {
 		var err error

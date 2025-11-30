@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"webstar/noturno-leadgen-worker/internal/dto"
+
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
 	"google.golang.org/adk/model/gemini"
@@ -81,10 +83,24 @@ type PreCallReportConfig struct {
 
 // PreCallReportHandler handles generating pre-call reports using Google ADK
 type PreCallReportHandler struct {
-	config         PreCallReportConfig
-	agent          agent.Agent
-	runner         *runner.Runner
-	sessionService session.Service
+	config          PreCallReportConfig
+	agent           agent.Agent
+	runner          *runner.Runner
+	sessionService  session.Service
+	businessProfile *dto.BusinessProfile // Business profile for personalization
+}
+
+// SetBusinessProfile sets the business profile to use for personalizing reports
+func (h *PreCallReportHandler) SetBusinessProfile(profile *dto.BusinessProfile) {
+	h.businessProfile = profile
+	if profile != nil {
+		log.Printf("[PreCallReportHandler] Business profile set: %s", profile.CompanyName)
+	}
+}
+
+// ClearBusinessProfile clears the business profile
+func (h *PreCallReportHandler) ClearBusinessProfile() {
+	h.businessProfile = nil
 }
 
 // NewPreCallReportHandler creates a new PreCallReportHandler instance
@@ -325,6 +341,31 @@ func (h *PreCallReportHandler) buildPrompt(result OrganicResult) string {
 **Title**: %s
 **Search Snippet**: %s
 `, result.Link, result.Title, result.Snippet)
+
+	// Include business profile context for personalization
+	if h.businessProfile != nil {
+		prompt += "\n---\n**YOUR BUSINESS CONTEXT** (Use this to personalize the report):\n"
+		prompt += fmt.Sprintf("- Your Company: %s\n", h.businessProfile.CompanyName)
+		if h.businessProfile.CompanyDescription != "" {
+			prompt += fmt.Sprintf("- What You Do: %s\n", h.businessProfile.CompanyDescription)
+		}
+		if h.businessProfile.ProblemSolved != "" {
+			prompt += fmt.Sprintf("- Problem You Solve: %s\n", h.businessProfile.ProblemSolved)
+		}
+		if len(h.businessProfile.Differentials) > 0 {
+			prompt += fmt.Sprintf("- Your Differentials: %s\n", joinStrings(h.businessProfile.Differentials, ", "))
+		}
+		if h.businessProfile.SuccessCase != "" {
+			prompt += fmt.Sprintf("- Success Case: %s\n", h.businessProfile.SuccessCase)
+		}
+		if h.businessProfile.CommunicationTone != "" {
+			prompt += fmt.Sprintf("- Communication Tone: %s\n", h.businessProfile.CommunicationTone)
+		}
+		if h.businessProfile.SenderName != "" {
+			prompt += fmt.Sprintf("- Sales Rep Name: %s\n", h.businessProfile.SenderName)
+		}
+		prompt += "\n**IMPORTANT**: Tailor the pain points, talking points, and recommended approach specifically to how YOUR services can help THIS lead. Be specific about how your solution addresses their potential needs.\n---\n"
+	}
 
 	// Include extracted data if available
 	if result.ExtractedData != nil && result.ExtractedData.Success {

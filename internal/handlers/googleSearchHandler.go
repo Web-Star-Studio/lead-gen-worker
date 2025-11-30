@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"webstar/noturno-leadgen-worker/internal/dto"
 
 	g "github.com/serpapi/google-search-results-golang"
 )
@@ -144,6 +145,20 @@ func (h *GoogleSearchHandler) SetDataExtractorHandler(handler *DataExtractorHand
 // When set, the Search method will automatically generate AI-powered pre-call reports for each result
 func (h *GoogleSearchHandler) SetPreCallReportHandler(handler *PreCallReportHandler) {
 	h.preCallReportHandler = handler
+}
+
+// SetBusinessProfile sets the business profile on the PreCallReportHandler for personalized reports
+func (h *GoogleSearchHandler) SetBusinessProfile(profile *dto.BusinessProfile) {
+	if h.preCallReportHandler != nil {
+		h.preCallReportHandler.SetBusinessProfile(profile)
+	}
+}
+
+// ClearBusinessProfile clears the business profile from the PreCallReportHandler
+func (h *GoogleSearchHandler) ClearBusinessProfile() {
+	if h.preCallReportHandler != nil {
+		h.preCallReportHandler.ClearBusinessProfile()
+	}
 }
 
 // getCanonicalLocation fetches the canonical location name from SerpAPI

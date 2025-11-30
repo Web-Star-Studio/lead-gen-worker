@@ -6,20 +6,34 @@ import (
 
 // Job represents a job record from the jobs table
 type Job struct {
-	ID              string     `json:"job_id"`
-	UserID          string     `json:"user_id"`
-	Status          string     `json:"status,omitempty"` // pending, processing, completed, failed
-	ICPID           *string    `json:"icp_id,omitempty"`
-	ICPName         string     `json:"icp_name"`
-	Region          string     `json:"region"`
-	LeadQuantity    int        `json:"lead_quantity"`
-	ExcludedDomains []string   `json:"excluded_domains"`
-	RequiredFields  []string   `json:"required_fields"`
-	LeadsGenerated  int        `json:"leads_generated,omitempty"`
-	ErrorMessage    *string    `json:"error_message,omitempty"`
-	CreatedAt       time.Time  `json:"created_at,omitempty"`
-	StartedAt       *time.Time `json:"started_at,omitempty"`
-	CompletedAt     *time.Time `json:"completed_at,omitempty"`
+	ID                string     `json:"job_id"`
+	UserID            string     `json:"user_id"`
+	Status            string     `json:"status,omitempty"` // pending, processing, completed, failed
+	ICPID             *string    `json:"icp_id,omitempty"`
+	ICPName           string     `json:"icp_name"`
+	Region            string     `json:"region"`
+	LeadQuantity      int        `json:"lead_quantity"`
+	ExcludedDomains   []string   `json:"excluded_domains"`
+	RequiredFields    []string   `json:"required_fields"`
+	BusinessProfileID *string    `json:"business_profile,omitempty"` // ID of the business profile to use for personalization
+	LeadsGenerated    int        `json:"leads_generated,omitempty"`
+	ErrorMessage      *string    `json:"error_message,omitempty"`
+	CreatedAt         time.Time  `json:"created_at,omitempty"`
+	StartedAt         *time.Time `json:"started_at,omitempty"`
+	CompletedAt       *time.Time `json:"completed_at,omitempty"`
+}
+
+// BusinessProfile represents a business profile for personalizing pre-call reports
+type BusinessProfile struct {
+	ID                 string   `json:"id"`
+	UserID             string   `json:"user_id"`
+	CompanyName        string   `json:"company_name"`
+	CompanyDescription string   `json:"company_description,omitempty"`
+	ProblemSolved      string   `json:"problem_solved,omitempty"`
+	Differentials      []string `json:"differentials,omitempty"`
+	SuccessCase        string   `json:"success_case,omitempty"`
+	CommunicationTone  string   `json:"communication_tone,omitempty"`
+	SenderName         string   `json:"sender_name,omitempty"`
 }
 
 // ICP represents an Ideal Customer Profile record from the icps table
