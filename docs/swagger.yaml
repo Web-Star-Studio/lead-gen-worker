@@ -1,0 +1,208 @@
+basePath: /api/v1
+definitions:
+  dto.ErrorResponse:
+    description: Error response returned when request fails
+    properties:
+      error:
+        description: Error message describing what went wrong
+        example: 'Key: ''SearchRequest.Q'' Error:Field validation for ''Q'' failed
+          on the ''required'' tag'
+        type: string
+    type: object
+  dto.SearchRequest:
+    description: Search request parameters for Google search
+    properties:
+      exclude_domains:
+        description: List of domains to exclude from search results
+        example:
+        - instagram.com
+        - linkedin.com
+        - facebook.com
+        items:
+          type: string
+        type: array
+      gl:
+        description: Country code for search results
+        example: br
+        type: string
+      hl:
+        description: Language code for search results
+        example: pt-br
+        type: string
+      location:
+        description: Location for geo-targeted search
+        example: Recife
+        type: string
+      num:
+        description: 'Total number of results to return (default: 10, max: 100). Multiple
+          pages will be fetched automatically if needed.'
+        example: 50
+        type: integer
+      q:
+        description: Search query string
+        example: escritório de contabilidade
+        type: string
+      start:
+        description: 'Result offset for pagination (default: 0)'
+        example: 0
+        type: integer
+    required:
+    - location
+    - q
+    type: object
+  handlers.OrganicResult:
+    description: A single organic search result from Google
+    properties:
+      displayed_link:
+        description: Displayed URL shown in search results
+        example: www.example.com.br
+        type: string
+      extensions:
+        description: Additional extensions like ratings text
+        example:
+        - Classificação
+        - 10/10 (3)
+        items:
+          type: string
+        type: array
+      link:
+        description: URL of the search result
+        example: https://www.example.com.br/
+        type: string
+      position:
+        description: Position of the result in the search results
+        example: 1
+        type: integer
+      rating:
+        description: Rating score if available
+        example: 4.8
+        type: number
+      reviews:
+        description: Number of reviews if available
+        example: 245
+        type: integer
+      scrape_error:
+        description: ScrapeError contains error message if scraping failed
+        type: string
+      scraped_content:
+        description: ScrapedContent is the markdown content scraped from the website
+          homepage (populated by FirecrawlHandler)
+        type: string
+      sitelinks:
+        allOf:
+        - $ref: '#/definitions/handlers.Sitelinks'
+        description: Sitelinks associated with this result
+      snippet:
+        description: Snippet/description of the search result
+        example: Precisa de um contador em Recife? Oferecemos serviços de contabilidade,
+          abertura de empresa e muito mais.
+        type: string
+      title:
+        description: Title of the search result
+        example: Escritório de Contabilidade em Recife - Contador em Recife
+        type: string
+    type: object
+  handlers.Pagination:
+    description: Pagination information for search results
+    properties:
+      current:
+        description: Current page number
+        example: 1
+        type: integer
+      next:
+        description: URL for the next page of results
+        example: https://serpapi.com/search.json?engine=google_light&start=10
+        type: string
+    type: object
+  handlers.SearchResponse:
+    description: Response containing organic search results and pagination info
+    properties:
+      organic_results:
+        description: List of organic search results
+        items:
+          $ref: '#/definitions/handlers.OrganicResult'
+        type: array
+      pages_fetched:
+        description: Number of pages fetched to get these results
+        example: 5
+        type: integer
+      serpapi_pagination:
+        allOf:
+        - $ref: '#/definitions/handlers.Pagination'
+        description: Pagination information (for the last page fetched)
+      total_results:
+        description: Total number of results returned
+        example: 50
+        type: integer
+    type: object
+  handlers.Sitelink:
+    description: Inline sitelink with title and URL
+    properties:
+      link:
+        description: URL of the sitelink
+        example: https://example.com/contact
+        type: string
+      title:
+        description: Title of the sitelink
+        example: Contact Us
+        type: string
+    type: object
+  handlers.Sitelinks:
+    description: Container for inline sitelinks
+    properties:
+      inline:
+        description: List of inline sitelinks
+        items:
+          $ref: '#/definitions/handlers.Sitelink'
+        type: array
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: A high-performance REST API service for scraping Google search results
+    using SerpAPI. Designed for lead generation workflows.
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: Lead Gen Worker API
+  version: "1.0"
+paths:
+  /search:
+    post:
+      consumes:
+      - application/json
+      description: Perform a Google search using SerpAPI and retrieve organic results
+        with advanced filtering options
+      parameters:
+      - description: Search parameters
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SearchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successful search results
+          schema:
+            $ref: '#/definitions/handlers.SearchResponse'
+        "400":
+          description: Bad request - validation error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Search Google for leads
+      tags:
+      - search
+schemes:
+- http
+- https
+swagger: "2.0"
