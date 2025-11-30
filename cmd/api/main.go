@@ -86,6 +86,10 @@ func main() {
 
 	// Initialize DataExtractorHandler if Google API key or Vertex AI is configured
 	if cfg.GoogleAPIKey != "" || cfg.UseVertexAI {
+		// Debug: log first 10 chars of API key to verify correct key is loaded
+		if len(cfg.GoogleAPIKey) > 10 {
+			log.Printf("[DEBUG] GOOGLE_API_KEY loaded: %s...", cfg.GoogleAPIKey[:10])
+		}
 		dataExtractorHandler, err := handlers.NewDataExtractorHandler(handlers.DataExtractorConfig{
 			APIKey:      cfg.GoogleAPIKey,
 			UseVertexAI: cfg.UseVertexAI,
