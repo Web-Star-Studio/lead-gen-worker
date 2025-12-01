@@ -113,7 +113,10 @@ func NewDataExtractorHandler(config DataExtractorConfig) (*DataExtractorHandler,
 
 	// Set defaults
 	if config.Model == "" {
-		config.Model = DefaultExtractorModel
+		config.Model = os.Getenv("GEMINI_MODEL")
+		if config.Model == "" {
+			config.Model = DefaultExtractorModel
+		}
 	}
 	if config.Timeout == 0 {
 		config.Timeout = DefaultExtractionTimeout
