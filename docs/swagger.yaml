@@ -111,7 +111,7 @@ definitions:
         type: integer
       next:
         description: URL for the next page of results
-        example: https://serpapi.com/search.json?engine=google_light&start=10
+        example: https://serpapi.com/search.json?engine=google&start=10
         type: string
     type: object
   handlers.SearchResponse:

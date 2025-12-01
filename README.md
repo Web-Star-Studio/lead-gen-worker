@@ -322,7 +322,7 @@ curl -X POST http://localhost:8080/api/v1/search \
   ],
   "serpapi_pagination": {
     "current": 1,
-    "next": "https://serpapi.com/search.json?engine=google_light&start=30..."
+    "next": "https://serpapi.com/search.json?engine=google&start=30..."
   }
 }
 ```

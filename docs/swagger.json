@@ -213,7 +213,7 @@
                 "next": {
                     "description": "URL for the next page of results",
                     "type": "string",
-                    "example": "https://serpapi.com/search.json?engine=google_light\u0026start=10"
+                    "example": "https://serpapi.com/search.json?engine=google\u0026start=10"
                 }
             }
         },

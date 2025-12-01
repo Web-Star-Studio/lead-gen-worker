@@ -93,7 +93,7 @@ type Pagination struct {
 	// Current page number
 	Current int `json:"current" example:"1"`
 	// URL for the next page of results
-	Next string `json:"next,omitempty" example:"https://serpapi.com/search.json?engine=google_light&start=10"`
+	Next string `json:"next,omitempty" example:"https://serpapi.com/search.json?engine=google&start=10"`
 }
 
 // SearchResponse contains only organic_results and pagination
@@ -199,7 +199,7 @@ func (h *GoogleSearchHandler) getCanonicalLocation(location string) (string, err
 // fetchPage fetches a single page of results from SerpAPI
 func (h *GoogleSearchHandler) fetchPage(query, canonicalLocation, hl, gl string, start int) ([]OrganicResult, *Pagination, error) {
 	parameters := map[string]string{
-		"engine":   "google_light",
+		"engine":   "google",
 		"q":        query,
 		"location": canonicalLocation,
 		"hl":       hl,
