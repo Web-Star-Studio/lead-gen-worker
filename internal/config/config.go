@@ -11,7 +11,7 @@ type Config struct {
 	FirecrawlAPIKey string
 	FirecrawlAPIURL string // Optional: custom Firecrawl API URL (leave empty for default)
 	SupabaseURL     string // Supabase project URL
-	SupabaseKey     string // Supabase anon/service key
+	SupabaseKey     string // Supabase secret key (sb_secret_xxx) - replaces legacy service_role key
 	WebhookSecret   string // Secret for validating Supabase webhook requests
 	// Google AI / Vertex AI configuration
 	GoogleAPIKey string // Google API key for Gemini (Google AI Studio backend)
@@ -19,6 +19,14 @@ type Config struct {
 	UseVertexAI  bool   // Use Vertex AI backend instead of Google AI Studio
 	GCPProject   string // Google Cloud project ID (for Vertex AI)
 	GCPLocation  string // Google Cloud location (for Vertex AI, e.g., "us-central1")
+}
+
+// getEnvWithFallback returns the value of the primary env var, or fallback if primary is empty
+func getEnvWithFallback(primary, fallback string) string {
+	if val := os.Getenv(primary); val != "" {
+		return val
+	}
+	return os.Getenv(fallback)
 }
 
 // Load reads configuration from environment variables
@@ -34,7 +42,7 @@ func Load() *Config {
 		FirecrawlAPIKey: os.Getenv("FIRECRAWL_API_KEY"),
 		FirecrawlAPIURL: os.Getenv("FIRECRAWL_API_URL"), // Optional
 		SupabaseURL:     os.Getenv("SUPABASE_URL"),
-		SupabaseKey:     os.Getenv("SUPABASE_KEY"),
+		SupabaseKey:     getEnvWithFallback("SUPABASE_SECRET_KEY", "SUPABASE_KEY"),
 		WebhookSecret:   os.Getenv("WEBHOOK_SECRET"), // For validating Supabase webhooks
 		GoogleAPIKey:    os.Getenv("GOOGLE_API_KEY"),
 		GeminiModel:     os.Getenv("GEMINI_MODEL"),                        // Optional

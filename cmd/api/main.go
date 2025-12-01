@@ -66,7 +66,7 @@ func main() {
 			log.Printf("SupabaseHandler initialized - database access enabled")
 		}
 	} else {
-		log.Printf("SUPABASE_URL or SUPABASE_KEY not set - database access disabled")
+		log.Printf("SUPABASE_URL or SUPABASE_SECRET_KEY not set - database access disabled")
 	}
 
 	// Initialize JobProcessor and WebhookController if Supabase and webhook secret are configured

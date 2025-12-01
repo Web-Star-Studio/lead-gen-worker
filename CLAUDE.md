@@ -16,7 +16,7 @@ This is a Go-based REST API service for scraping Google search results via SerpA
 export SERPAPI_KEY="your-api-key"
 export FIRECRAWL_API_KEY="your-firecrawl-key"  # Optional: enables website scraping
 export SUPABASE_URL="https://xxx.supabase.co"  # Optional: enables database access
-export SUPABASE_KEY="your-supabase-key"        # Optional: Supabase anon/service key
+export SUPABASE_SECRET_KEY="sb_secret_xxx"    # Optional: Supabase secret key (bypasses RLS)
 go run ./cmd/api
 
 # Build the binary
@@ -130,7 +130,7 @@ docs/                        # Auto-generated Swagger documentation
 - `FIRECRAWL_API_KEY` - Your Firecrawl API key (enables automatic website scraping)
 - `FIRECRAWL_API_URL` - Custom Firecrawl API URL (leave empty for default cloud API)
 - `SUPABASE_URL` - Your Supabase project URL (e.g., "https://xxx.supabase.co")
-- `SUPABASE_KEY` - Your Supabase anon or service role key
+- `SUPABASE_SECRET_KEY` - Your Supabase secret key (`sb_secret_xxx` format) - bypasses RLS for server-side operations. Get it from Dashboard > Settings > API Keys > Secret Key. (Falls back to legacy `SUPABASE_KEY` for backward compatibility)
 
 **AI Features (Data Extraction + Pre-Call Reports):**
 
