@@ -119,6 +119,33 @@ func (p *JobProcessor) ProcessJob(ctx context.Context, job *dto.Job) {
 			}
 		}
 
+		// Insert cold email if available
+		if result.ColdEmail != nil && result.ColdEmail.Success {
+			// Get recipient email from extracted data
+			toEmail := ""
+			if result.ExtractedData != nil && len(result.ExtractedData.Emails) > 0 {
+				toEmail = result.ExtractedData.Emails[0]
+			}
+
+			coldEmailRecord := &dto.ColdEmailRecord{
+				LeadID:            leadID,
+				Subject:           result.ColdEmail.Subject,
+				Body:              result.ColdEmail.Body,
+				ToEmail:           toEmail,
+				BusinessProfileID: job.BusinessProfileID,
+			}
+
+			// Set from_name from business profile if available
+			if businessProfile != nil && businessProfile.SenderName != "" {
+				coldEmailRecord.FromName = businessProfile.SenderName
+			}
+
+			if _, err := p.supabase.InsertColdEmail(coldEmailRecord); err != nil {
+				log.Printf("[JobProcessor] Failed to insert cold email: %v", err)
+				// Continue anyway, lead was created
+			}
+		}
+
 		leadsGenerated++
 		log.Printf("[JobProcessor] Lead created: id=%s, company=%s", leadID, lead.CompanyName)
 	}

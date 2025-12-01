@@ -306,3 +306,54 @@ func (h *SupabaseHandler) InsertPreCallReport(leadID, content string) error {
 	log.Printf("[SupabaseHandler] Pre-call report inserted successfully")
 	return nil
 }
+
+// InsertColdEmail inserts a cold email for a lead into the emails table
+func (h *SupabaseHandler) InsertColdEmail(email *dto.ColdEmailRecord) (string, error) {
+	log.Printf("[SupabaseHandler] InsertColdEmail: lead_id=%s, subject=%s", email.LeadID, email.Subject)
+
+	insertData := map[string]interface{}{
+		"lead_id":  email.LeadID,
+		"subject":  email.Subject,
+		"body":     email.Body,
+		"status":   "draft", // Default status
+		"to_email": email.ToEmail,
+	}
+
+	if email.BusinessProfileID != nil && *email.BusinessProfileID != "" {
+		insertData["business_profile_id"] = *email.BusinessProfileID
+	}
+	if email.FromName != "" {
+		insertData["from_name"] = email.FromName
+	}
+	if email.FromEmail != "" {
+		insertData["from_email"] = email.FromEmail
+	}
+	if email.ReplyTo != "" {
+		insertData["reply_to"] = email.ReplyTo
+	}
+
+	data, _, err := h.client.From("emails").Insert(insertData, false, "", "", "").Execute()
+	if err != nil {
+		log.Printf("[SupabaseHandler] Failed to insert cold email: %v", err)
+		return "", fmt.Errorf("failed to insert cold email: %w", err)
+	}
+
+	// Parse response to get the generated ID
+	var inserted []map[string]interface{}
+	if err := json.Unmarshal(data, &inserted); err != nil {
+		log.Printf("[SupabaseHandler] Failed to parse insert response: %v", err)
+		return "", fmt.Errorf("failed to parse insert response: %w", err)
+	}
+
+	if len(inserted) == 0 {
+		return "", fmt.Errorf("no cold email was inserted")
+	}
+
+	emailID, ok := inserted[0]["id"].(string)
+	if !ok {
+		return "", fmt.Errorf("failed to get cold email ID from response")
+	}
+
+	log.Printf("[SupabaseHandler] Cold email inserted successfully: id=%s", emailID)
+	return emailID, nil
+}

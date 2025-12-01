@@ -331,3 +331,75 @@ When `GOOGLE_API_KEY` is configured, the search response includes:
   }
 }
 ```
+
+## Cold Email Generation (Google ADK)
+
+The `ColdEmailHandler` is an AI agent that generates personalized B2B cold emails for first contact with sales leads.
+
+### Architecture
+
+- Uses Google ADK's `llmagent` with Gemini Flash model (faster generation)
+- Processes results concurrently (max 3 parallel emails)
+- 45-second timeout per email generation
+- Uses pre-call report data for better personalization
+
+### ColdEmail Fields
+
+Each generated email includes:
+
+- `subject` - Personalized email subject line (max 50 chars)
+- `body` - Main email content (HTML/plain text)
+- `plain_text_body` - Plain text version
+- `call_to_action` - Specific CTA used in the email
+- `personalization_notes` - Explanation of how the email was personalized
+
+### Email Generation Best Practices
+
+The AI follows these guidelines:
+- Maximum 150 words in email body
+- Short, curiosity-driven subject lines
+- Personalized opening referencing the prospect's business
+- Clear value proposition connection
+- Low-commitment CTA (conversation, not sale)
+- Portuguese Brazilian language
+
+### Response with Cold Emails
+
+When cold email generation is enabled, each organic result includes:
+
+```json
+{
+  "position": 1,
+  "title": "Example Company",
+  "link": "https://example.com",
+  "cold_email": {
+    "url": "https://example.com",
+    "recipient_name": "João Silva",
+    "recipient_company": "Example Corp",
+    "subject": "Example Corp - otimização de processos",
+    "body": "Olá João,\n\nVi que a Example Corp...",
+    "plain_text_body": "Olá João,\n\nVi que a Example Corp...",
+    "call_to_action": "Conversa rápida de 15 minutos",
+    "personalization_notes": "Email personalizado com base no setor de tecnologia...",
+    "success": true,
+    "generated_at": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+### Supabase Table: emails
+
+The cold emails are saved to the existing `emails` table with the following structure:
+
+- `id` (uuid) - Primary key
+- `lead_id` (uuid) - Foreign key to leads table
+- `subject` (text) - Email subject line
+- `body` (text) - Email body content
+- `status` (email_status enum) - Email status: draft, sent
+- `sent_at` (timestamptz) - When email was sent
+- `created_at` (timestamptz) - Creation timestamp
+- `business_profile_id` (uuid) - Foreign key to business_profiles
+- `from_name` (text) - Sender name
+- `from_email` (text) - Sender email (default: onboarding@resend.dev)
+- `reply_to` (text) - Reply-to email address
+- `to_email` (text) - Recipient email address

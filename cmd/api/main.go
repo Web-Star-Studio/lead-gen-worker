@@ -143,6 +143,31 @@ func main() {
 		log.Printf("GOOGLE_API_KEY or Vertex AI not configured - pre-call report generation disabled")
 	}
 
+	// Initialize ColdEmailHandler if Google API key or Vertex AI is configured
+	if cfg.GoogleAPIKey != "" || cfg.UseVertexAI {
+		coldEmailHandler, err := handlers.NewColdEmailHandler(handlers.ColdEmailConfig{
+			APIKey:      cfg.GoogleAPIKey,
+			Model:       handlers.DefaultEmailModel, // Use flash model for faster generation
+			UseVertexAI: cfg.UseVertexAI,
+			GCPProject:  cfg.GCPProject,
+			GCPLocation: cfg.GCPLocation,
+		})
+		if err != nil {
+			log.Printf("Warning: Failed to initialize ColdEmailHandler: %v", err)
+			log.Printf("Continuing without cold email generation")
+		} else {
+			searchHandler.SetColdEmailHandler(coldEmailHandler)
+			backend := "Google AI Studio"
+			if cfg.UseVertexAI {
+				backend = "Vertex AI"
+			}
+			log.Printf("ColdEmailHandler initialized - cold email generation enabled (backend: %s, model: %s)",
+				backend, handlers.DefaultEmailModel)
+		}
+	} else {
+		log.Printf("GOOGLE_API_KEY or Vertex AI not configured - cold email generation disabled")
+	}
+
 	// Setup router
 	router := api.NewRouter(searchHandler, webhookController)
 

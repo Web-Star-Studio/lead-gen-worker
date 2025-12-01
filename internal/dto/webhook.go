@@ -79,3 +79,19 @@ type JobStatusUpdate struct {
 	LeadsGenerated *int       `json:"leads_generated,omitempty"`
 	ErrorMessage   *string    `json:"error_message,omitempty"`
 }
+
+// ColdEmailRecord represents a cold email record for insertion into the emails table
+type ColdEmailRecord struct {
+	ID                string    `json:"id,omitempty"`
+	LeadID            string    `json:"lead_id"`
+	Subject           string    `json:"subject"`
+	Body              string    `json:"body"`
+	Status            string    `json:"status,omitempty"` // draft, sent
+	SentAt            *string   `json:"sent_at,omitempty"`
+	CreatedAt         time.Time `json:"created_at,omitempty"`
+	BusinessProfileID *string   `json:"business_profile_id,omitempty"`
+	FromName          string    `json:"from_name,omitempty"`
+	FromEmail         string    `json:"from_email,omitempty"` // default: onboarding@resend.dev
+	ReplyTo           string    `json:"reply_to,omitempty"`
+	ToEmail           string    `json:"to_email"`
+}

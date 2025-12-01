@@ -28,6 +28,7 @@ type GoogleSearchHandler struct {
 	firecrawlHandler     *FirecrawlHandler
 	dataExtractorHandler *DataExtractorHandler
 	preCallReportHandler *PreCallReportHandler
+	coldEmailHandler     *ColdEmailHandler
 }
 
 type GoogleSearchParams struct {
@@ -85,6 +86,8 @@ type OrganicResult struct {
 	ExtractedData *ExtractedData `json:"extracted_data,omitempty"`
 	// PreCallReport contains the AI-generated company summary for sales calls
 	PreCallReport string `json:"pre_call_report,omitempty"`
+	// ColdEmail contains the AI-generated cold email for first contact
+	ColdEmail *ColdEmail `json:"cold_email,omitempty"`
 }
 
 // Pagination represents the pagination info from SerpAPI
@@ -147,17 +150,29 @@ func (h *GoogleSearchHandler) SetPreCallReportHandler(handler *PreCallReportHand
 	h.preCallReportHandler = handler
 }
 
-// SetBusinessProfile sets the business profile on the PreCallReportHandler for personalized reports
+// SetColdEmailHandler sets the ColdEmailHandler for generating cold emails
+// When set, the Search method will automatically generate AI-powered cold emails for each result
+func (h *GoogleSearchHandler) SetColdEmailHandler(handler *ColdEmailHandler) {
+	h.coldEmailHandler = handler
+}
+
+// SetBusinessProfile sets the business profile on AI handlers for personalized content
 func (h *GoogleSearchHandler) SetBusinessProfile(profile *dto.BusinessProfile) {
 	if h.preCallReportHandler != nil {
 		h.preCallReportHandler.SetBusinessProfile(profile)
 	}
+	if h.coldEmailHandler != nil {
+		h.coldEmailHandler.SetBusinessProfile(profile)
+	}
 }
 
-// ClearBusinessProfile clears the business profile from the PreCallReportHandler
+// ClearBusinessProfile clears the business profile from AI handlers
 func (h *GoogleSearchHandler) ClearBusinessProfile() {
 	if h.preCallReportHandler != nil {
 		h.preCallReportHandler.ClearBusinessProfile()
+	}
+	if h.coldEmailHandler != nil {
+		h.coldEmailHandler.ClearBusinessProfile()
 	}
 }
 
@@ -426,6 +441,39 @@ func (h *GoogleSearchHandler) Search(params GoogleSearchParams) (*SearchResponse
 		log.Printf("[GoogleSearchHandler] Pre-call report generation complete: %d/%d successful", successCount, len(reports))
 	} else {
 		log.Printf("[GoogleSearchHandler] Skipping pre-call report generation (handler nil or no results)")
+	}
+
+	// If ColdEmailHandler is configured, generate cold emails (after pre-call reports)
+	log.Printf("[GoogleSearchHandler] coldEmailHandler is nil: %v, organic results count: %d", h.coldEmailHandler == nil, len(result.OrganicResults))
+	if h.coldEmailHandler != nil && len(result.OrganicResults) > 0 {
+		log.Printf("[GoogleSearchHandler] Starting cold email generation for %d results", len(result.OrganicResults))
+		ctx := context.Background()
+
+		// Build email generation inputs with pre-call report data
+		var inputs []EmailGenerationInput
+		for _, r := range result.OrganicResults {
+			inputs = append(inputs, EmailGenerationInput{
+				Result:        r,
+				PreCallReport: r.PreCallReport, // Include pre-call report for better personalization
+			})
+		}
+
+		emails := h.coldEmailHandler.GenerateEmails(ctx, inputs)
+
+		// Enrich organic results with cold emails
+		successCount := 0
+		for i := range result.OrganicResults {
+			link := result.OrganicResults[i].Link
+			if email, exists := emails[link]; exists {
+				if email.Success {
+					result.OrganicResults[i].ColdEmail = email
+					successCount++
+				}
+			}
+		}
+		log.Printf("[GoogleSearchHandler] Cold email generation complete: %d/%d successful", successCount, len(emails))
+	} else {
+		log.Printf("[GoogleSearchHandler] Skipping cold email generation (handler nil or no results)")
 	}
 
 	return result, nil
