@@ -31,6 +31,10 @@ type GoogleSearchHandler struct {
 	coldEmailHandler     *ColdEmailHandler
 }
 
+// ResultCallback is called when a single result is fully processed (scraped, extracted, report generated, email generated)
+// Return false to stop processing remaining results
+type ResultCallback func(result *OrganicResult, index int) bool
+
 type GoogleSearchParams struct {
 	Q              string
 	Location       string
@@ -477,6 +481,153 @@ func (h *GoogleSearchHandler) Search(params GoogleSearchParams) (*SearchResponse
 	}
 
 	return result, nil
+}
+
+// SearchWithStreaming performs a search and processes each result individually, calling the callback
+// after each result is fully processed (scraped, extracted, report generated, email generated).
+// This allows for real-time saving of results as they're completed.
+// Returns the total number of results processed and any error from the initial search.
+func (h *GoogleSearchHandler) SearchWithStreaming(params GoogleSearchParams, callback ResultCallback) (int, error) {
+	// First, get all search results from SerpAPI (this is fast, just API calls)
+	canonicalLocation, err := h.getCanonicalLocation(params.Location)
+	if err != nil {
+		log.Printf("[GoogleSearchHandler] Warning: Failed to get canonical location: %v (using original)", err)
+		canonicalLocation = params.Location
+	}
+
+	// Build query with excluded domains
+	query := params.Q
+	for _, domain := range params.ExcludeDomains {
+		query += " -site:" + domain
+	}
+
+	// Set default and max values for total results requested
+	totalRequested := params.Num
+	if totalRequested <= 0 {
+		totalRequested = ResultsPerPage
+	} else if totalRequested > MaxResultsPerRequest {
+		totalRequested = MaxResultsPerRequest
+	}
+
+	// Calculate pages needed
+	pagesNeeded := (totalRequested + ResultsPerPage - 1) / ResultsPerPage
+	if pagesNeeded > MaxPagesToFetch {
+		pagesNeeded = MaxPagesToFetch
+	}
+
+	// Collect all organic results first (search phase is fast)
+	var allResults []OrganicResult
+	currentStart := params.Start
+	pagesFetched := 0
+
+	log.Printf("[GoogleSearchHandler] Starting streaming search for query: %s", query)
+
+	for pagesFetched < pagesNeeded && len(allResults) < totalRequested {
+		pageResults, pagination, err := h.fetchPage(query, canonicalLocation, params.Hl, params.Gl, currentStart)
+		if err != nil {
+			if pagesFetched == 0 {
+				return 0, err
+			}
+			break
+		}
+
+		pagesFetched++
+
+		for _, res := range pageResults {
+			if len(allResults) >= totalRequested {
+				break
+			}
+			res.Position = len(allResults) + 1
+			allResults = append(allResults, res)
+		}
+
+		if pagination == nil || pagination.Next == "" || len(pageResults) == 0 {
+			break
+		}
+
+		currentStart += ResultsPerPage
+	}
+
+	log.Printf("[GoogleSearchHandler] Search phase complete: %d results found, now processing individually", len(allResults))
+
+	// Now process each result individually and call callback after each is complete
+	ctx := context.Background()
+	processedCount := 0
+
+	for i := range allResults {
+		result := &allResults[i]
+		log.Printf("[GoogleSearchHandler] Processing result %d/%d: %s", i+1, len(allResults), result.Link)
+
+		// Step 1: Scrape the website
+		if h.firecrawlHandler != nil {
+			scraped, err := h.firecrawlHandler.ScrapeURL(result.Link)
+			if err == nil && scraped.Success {
+				result.ScrapedContent = scraped.Markdown
+				log.Printf("[GoogleSearchHandler] Result %d: Scraped successfully (%d chars)", i+1, len(scraped.Markdown))
+			} else {
+				errMsg := "unknown error"
+				if err != nil {
+					errMsg = err.Error()
+				} else if scraped != nil {
+					errMsg = scraped.Error
+				}
+				result.ScrapeError = errMsg
+				log.Printf("[GoogleSearchHandler] Result %d: Scrape failed: %s", i+1, errMsg)
+			}
+		}
+
+		// Step 2: Extract structured data
+		if h.dataExtractorHandler != nil && result.ScrapedContent != "" {
+			extracted := h.dataExtractorHandler.ExtractData(ctx, *result)
+			result.ExtractedData = extracted
+			if extracted.Success {
+				log.Printf("[GoogleSearchHandler] Result %d: Data extracted (company: %s)", i+1, extracted.Company)
+			} else {
+				log.Printf("[GoogleSearchHandler] Result %d: Data extraction failed: %s", i+1, extracted.Error)
+			}
+		}
+
+		// Step 3: Generate pre-call report
+		if h.preCallReportHandler != nil && (result.ScrapedContent != "" || result.Snippet != "") {
+			report := h.preCallReportHandler.GenerateReport(ctx, *result)
+			if report.Success {
+				result.PreCallReport = report.CompanySummary
+				log.Printf("[GoogleSearchHandler] Result %d: Pre-call report generated", i+1)
+			} else {
+				log.Printf("[GoogleSearchHandler] Result %d: Pre-call report failed: %s", i+1, report.Error)
+			}
+		}
+
+		// Step 4: Generate cold email
+		if h.coldEmailHandler != nil && (result.PreCallReport != "" || result.ScrapedContent != "") {
+			input := EmailGenerationInput{
+				Result:        *result,
+				PreCallReport: result.PreCallReport,
+			}
+			email := h.coldEmailHandler.GenerateEmail(ctx, input)
+			if email.Success {
+				result.ColdEmail = email
+				log.Printf("[GoogleSearchHandler] Result %d: Cold email generated", i+1)
+			} else {
+				log.Printf("[GoogleSearchHandler] Result %d: Cold email failed: %s", i+1, email.Error)
+			}
+		}
+
+		processedCount++
+
+		// Call the callback with the fully processed result
+		// Callback can save to database immediately so user sees it in real-time
+		if callback != nil {
+			shouldContinue := callback(result, i)
+			if !shouldContinue {
+				log.Printf("[GoogleSearchHandler] Callback requested stop at result %d", i+1)
+				break
+			}
+		}
+	}
+
+	log.Printf("[GoogleSearchHandler] Streaming search complete: %d results processed", processedCount)
+	return processedCount, nil
 }
 
 // Helper functions to safely extract values from map[string]interface{}

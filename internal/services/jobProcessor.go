@@ -24,10 +24,11 @@ func NewJobProcessor(supabase *handlers.SupabaseHandler, searchHandler *handlers
 	}
 }
 
-// ProcessJob processes a job in the background
-// This function is meant to be called as a goroutine
+// ProcessJob processes a job in the background using streaming mode
+// Each result is saved immediately after being fully processed (scraped, extracted, report + email generated)
+// This allows users to see leads appearing in real-time without waiting for all results to complete
 func (p *JobProcessor) ProcessJob(ctx context.Context, job *dto.Job) {
-	log.Printf("[JobProcessor] Starting job processing: id=%s, icp_name=%s", job.ID, job.ICPName)
+	log.Printf("[JobProcessor] Starting job processing (streaming mode): id=%s, icp_name=%s", job.ID, job.ICPName)
 
 	// 1. Update status to "processing"
 	if err := p.supabase.UpdateJobStatus(job.ID, "processing", nil, nil); err != nil {
@@ -63,11 +64,11 @@ func (p *JobProcessor) ProcessJob(ctx context.Context, job *dto.Job) {
 		}
 	}
 
-	// 3. Build search query from ICP
+	// 4. Build search query from ICP
 	searchQuery := p.buildSearchQuery(job, icp)
 	log.Printf("[JobProcessor] Search query: %s", searchQuery)
 
-	// 4. Build search request
+	// 5. Build search request
 	searchRequest := handlers.GoogleSearchParams{
 		Q:              searchQuery,
 		Location:       job.Region,
@@ -77,51 +78,41 @@ func (p *JobProcessor) ProcessJob(ctx context.Context, job *dto.Job) {
 		Num:            job.LeadQuantity,
 	}
 
-	// 5. Execute search
-	log.Printf("[JobProcessor] Executing search with num=%d", searchRequest.Num)
-	searchResult, err := p.searchHandler.Search(searchRequest)
-	if err != nil {
-		log.Printf("[JobProcessor] Search failed: %v", err)
-		p.failJob(job.ID, fmt.Sprintf("Search failed: %v", err))
-		return
-	}
-
-	log.Printf("[JobProcessor] Search returned %d results", len(searchResult.OrganicResults))
-
-	// 6. Process each result, filter by required fields, and save leads
+	// 6. Execute streaming search - each result is saved immediately after processing
 	leadsGenerated := 0
-	for _, result := range searchResult.OrganicResults {
+
+	// Callback function that saves each result as it's completed
+	saveResultCallback := func(result *handlers.OrganicResult, index int) bool {
 		// Check if result has extracted data
 		if result.ExtractedData == nil {
-			log.Printf("[JobProcessor] Skipping result without extracted data: %s", result.Link)
-			continue
+			log.Printf("[JobProcessor] Skipping result %d without extracted data: %s", index+1, result.Link)
+			return true // Continue to next result
 		}
 
 		// Check required fields
 		if !p.meetsRequiredFields(result.ExtractedData, job.RequiredFields) {
-			log.Printf("[JobProcessor] Result does not meet required fields: %s", result.Link)
-			continue
+			log.Printf("[JobProcessor] Result %d does not meet required fields: %s", index+1, result.Link)
+			return true // Continue to next result
 		}
 
-		// Create lead
-		lead := p.createLead(job, &result)
+		// Create and save lead immediately
+		lead := p.createLead(job, result)
 		leadID, err := p.supabase.InsertLead(lead)
 		if err != nil {
-			log.Printf("[JobProcessor] Failed to insert lead: %v", err)
-			continue
+			log.Printf("[JobProcessor] Failed to insert lead %d: %v", index+1, err)
+			return true // Continue to next result
 		}
 
 		// Insert pre-call report if available
 		if result.PreCallReport != "" {
 			if err := p.supabase.InsertPreCallReport(leadID, result.PreCallReport); err != nil {
-				log.Printf("[JobProcessor] Failed to insert pre-call report: %v", err)
+				log.Printf("[JobProcessor] Failed to insert pre-call report for lead %d: %v", index+1, err)
 				// Continue anyway, lead was created
 			}
 		}
 
 		// Insert cold email if available
 		if result.ColdEmail != nil && result.ColdEmail.Success {
-			// Get recipient email from extracted data
 			toEmail := ""
 			if result.ExtractedData != nil && len(result.ExtractedData.Emails) > 0 {
 				toEmail = result.ExtractedData.Emails[0]
@@ -135,19 +126,31 @@ func (p *JobProcessor) ProcessJob(ctx context.Context, job *dto.Job) {
 				BusinessProfileID: job.BusinessProfileID,
 			}
 
-			// Set from_name from business profile if available
 			if businessProfile != nil && businessProfile.SenderName != "" {
 				coldEmailRecord.FromName = businessProfile.SenderName
 			}
 
 			if _, err := p.supabase.InsertColdEmail(coldEmailRecord); err != nil {
-				log.Printf("[JobProcessor] Failed to insert cold email: %v", err)
+				log.Printf("[JobProcessor] Failed to insert cold email for lead %d: %v", index+1, err)
 				// Continue anyway, lead was created
 			}
 		}
 
 		leadsGenerated++
-		log.Printf("[JobProcessor] Lead created: id=%s, company=%s", leadID, lead.CompanyName)
+		log.Printf("[JobProcessor] ✓ Lead %d saved immediately: id=%s, company=%s", index+1, leadID, lead.CompanyName)
+
+		// Update job with current lead count (real-time progress)
+		_ = p.supabase.UpdateJobStatus(job.ID, "processing", &leadsGenerated, nil)
+
+		return true // Continue processing
+	}
+
+	log.Printf("[JobProcessor] Starting streaming search with callback (num=%d)", searchRequest.Num)
+	_, err := p.searchHandler.SearchWithStreaming(searchRequest, saveResultCallback)
+	if err != nil {
+		log.Printf("[JobProcessor] Search failed: %v", err)
+		p.failJob(job.ID, fmt.Sprintf("Search failed: %v", err))
+		return
 	}
 
 	// 7. Update job to completed
@@ -156,7 +159,7 @@ func (p *JobProcessor) ProcessJob(ctx context.Context, job *dto.Job) {
 		return
 	}
 
-	log.Printf("[JobProcessor] Job completed: id=%s, leads_generated=%d", job.ID, leadsGenerated)
+	log.Printf("[JobProcessor] Job completed (streaming mode): id=%s, leads_generated=%d", job.ID, leadsGenerated)
 }
 
 // buildSearchQuery builds the search query from job and ICP data

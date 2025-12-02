@@ -332,6 +332,31 @@ When `GOOGLE_API_KEY` is configured, the search response includes:
 }
 ```
 
+## Streaming Lead Generation (Real-Time Results)
+
+The lead generation system uses a **streaming architecture** that saves each lead immediately after it's fully processed. This provides real-time visibility to users without waiting for all results to complete.
+
+### Processing Flow (Per Result)
+
+```
+Search Result → Scrape Website → Extract Data → Pre-Call Report → Cold Email → SAVE IMMEDIATELY
+                                                                                    ↓
+                                                                         User sees lead in UI
+```
+
+### Key Benefits
+
+- **Real-time visibility**: Users see leads appearing one-by-one as they're processed
+- **Progress updates**: `leads_generated` count is updated in real-time on the job record
+- **No waiting**: First lead appears within ~30 seconds, not after all 50+ are processed
+- **Resilient**: If processing fails midway, completed leads are already saved
+
+### Implementation
+
+- `SearchWithStreaming()` - Processes each result sequentially through the full pipeline
+- `ResultCallback` - Called after each result is fully processed to save to database
+- Job status updates with current lead count during processing
+
 ## Cold Email Generation (Google ADK)
 
 The `ColdEmailHandler` is an AI agent that generates personalized B2B cold emails for first contact with sales leads.
