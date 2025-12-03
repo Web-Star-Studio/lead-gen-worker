@@ -643,31 +643,31 @@ func (p *AutomationProcessor) processFullEnrichment(ctx context.Context, leadIDs
 
 			result := dto.EnrichmentResult{LeadID: id}
 
-			// Step 1: Enrich
+			// Step 1: Enrich (optional - continues even if no website)
 			enrichResult := p.enrichSingleLead(ctx, id)
-			if !enrichResult.Success {
-				result.Error = enrichResult.Error
-				mu.Lock()
-				results[idx] = result
-				processedCount++
-				mu.Unlock()
-				return
+			if enrichResult.Success {
+				result.Enriched = true
+			} else {
+				automationLog.Warn("Enrichment skipped, continuing with pre-call/email", map[string]interface{}{
+					"lead_id": id,
+					"reason":  enrichResult.Error,
+				})
 			}
-			result.Enriched = true
 
-			// Step 2: Pre-call
+			// Step 2: Pre-call (runs even without enrichment)
 			preCallResult := p.generatePreCallForLead(ctx, id)
 			if preCallResult.Success {
 				result.PreCall = true
 			}
 
-			// Step 3: Email
+			// Step 3: Email (runs even without enrichment)
 			emailResult := p.generateEmailForLead(ctx, id, profile)
 			if emailResult.Success {
 				result.Email = true
 			}
 
-			result.Success = result.Enriched && (result.PreCall || result.Email)
+			// Success if at least pre-call or email was generated
+			result.Success = result.PreCall || result.Email
 
 			mu.Lock()
 			results[idx] = result
@@ -816,12 +816,17 @@ func (p *AutomationProcessor) ProcessLeadCreated(ctx context.Context, lead *dto.
 			}
 		}
 
-		// Full pipeline
+		// Full pipeline (continues even if enrichment fails)
 		enrichResult := p.enrichSingleLead(ctx, lead.ID)
-		if enrichResult.Success {
-			p.generatePreCallForLead(ctx, lead.ID)
-			p.generateEmailForLead(ctx, lead.ID, profile)
+		if !enrichResult.Success {
+			automationLog.Warn("Enrichment skipped, continuing with pre-call/email", map[string]interface{}{
+				"lead_id": lead.ID,
+				"reason":  enrichResult.Error,
+			})
 		}
+		// Generate pre-call and email regardless of enrichment result
+		p.generatePreCallForLead(ctx, lead.ID)
+		p.generateEmailForLead(ctx, lead.ID, profile)
 	}
 
 	duration := time.Since(startTime)
