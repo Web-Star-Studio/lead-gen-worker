@@ -17,6 +17,37 @@ const (
 	RetryDelay           = 5 * time.Second
 )
 
+// AutomationLogger provides structured logging for automation operations
+type AutomationLogger struct {
+	prefix string
+}
+
+func (l *AutomationLogger) log(level, msg string, fields map[string]interface{}) {
+	fieldStr := ""
+	for k, v := range fields {
+		fieldStr += fmt.Sprintf(" %s=%v", k, v)
+	}
+	log.Printf("[%s] [%s] %s%s", l.prefix, level, msg, fieldStr)
+}
+
+func (l *AutomationLogger) Info(msg string, fields map[string]interface{}) {
+	l.log("INFO", msg, fields)
+}
+
+func (l *AutomationLogger) Warn(msg string, fields map[string]interface{}) {
+	l.log("WARN", msg, fields)
+}
+
+func (l *AutomationLogger) Error(msg string, fields map[string]interface{}) {
+	l.log("ERROR", msg, fields)
+}
+
+func (l *AutomationLogger) Debug(msg string, fields map[string]interface{}) {
+	l.log("DEBUG", msg, fields)
+}
+
+var automationLog = &AutomationLogger{prefix: "AutomationProcessor"}
+
 // AutomationProcessor handles automation tasks (enrichment, pre-call, email generation)
 type AutomationProcessor struct {
 	supabase             *handlers.SupabaseHandler
@@ -34,6 +65,18 @@ func NewAutomationProcessor(
 	preCall *handlers.PreCallReportHandler,
 	coldEmail *handlers.ColdEmailHandler,
 ) *AutomationProcessor {
+	// Log handler capabilities on initialization
+	automationLog.Info("Initializing AutomationProcessor", map[string]interface{}{
+		"supabase_enabled":  supabase != nil,
+		"firecrawl_enabled": firecrawl != nil,
+		"extractor_enabled": extractor != nil,
+		"precall_enabled":   preCall != nil,
+		"coldemail_enabled": coldEmail != nil,
+		"max_concurrent":    MaxConcurrentScrapes,
+		"max_retries":       MaxRetries,
+		"retry_delay_sec":   RetryDelay.Seconds(),
+	})
+
 	return &AutomationProcessor{
 		supabase:             supabase,
 		firecrawlHandler:     firecrawl,
@@ -45,12 +88,24 @@ func NewAutomationProcessor(
 
 // ProcessTask processes an automation task based on its type
 func (p *AutomationProcessor) ProcessTask(ctx context.Context, task *dto.AutomationTask) {
-	log.Printf("[AutomationProcessor] Processing task: id=%s, type=%s, priority=%d",
-		task.ID, task.TaskType, task.Priority)
+	startTime := time.Now()
+
+	automationLog.Info("═══════════════════════════════════════════════════════════", nil)
+	automationLog.Info("TASK STARTED", map[string]interface{}{
+		"task_id":             task.ID,
+		"user_id":             task.UserID,
+		"task_type":           task.TaskType,
+		"priority":            task.Priority,
+		"business_profile_id": task.BusinessProfileID,
+		"started_at":          startTime.Format(time.RFC3339),
+	})
 
 	// Update status to processing
 	if err := p.supabase.UpdateAutomationTaskStatus(task.ID, string(dto.TaskStatusProcessing), 0, 0, 0, nil); err != nil {
-		log.Printf("[AutomationProcessor] Failed to update task status: %v", err)
+		automationLog.Error("Failed to update task status to processing", map[string]interface{}{
+			"task_id": task.ID,
+			"error":   err.Error(),
+		})
 		return
 	}
 
@@ -63,9 +118,20 @@ func (p *AutomationProcessor) ProcessTask(ctx context.Context, task *dto.Automat
 
 	if len(leadIDs) == 0 {
 		errMsg := "no leads to process"
+		automationLog.Error("Task failed - no leads provided", map[string]interface{}{
+			"task_id": task.ID,
+			"user_id": task.UserID,
+		})
 		p.supabase.UpdateAutomationTaskStatus(task.ID, string(dto.TaskStatusFailed), 0, 0, 0, &errMsg)
 		return
 	}
+
+	automationLog.Info("Processing leads batch", map[string]interface{}{
+		"task_id":    task.ID,
+		"user_id":    task.UserID,
+		"lead_count": len(leadIDs),
+		"task_type":  task.TaskType,
+	})
 
 	// Update total items
 	p.supabase.UpdateAutomationTaskStatus(task.ID, string(dto.TaskStatusProcessing), len(leadIDs), 0, 0, nil)
@@ -84,6 +150,11 @@ func (p *AutomationProcessor) ProcessTask(ctx context.Context, task *dto.Automat
 		results = p.processFullEnrichment(ctx, leadIDs, task.BusinessProfileID, task.ID)
 	default:
 		errMsg := fmt.Sprintf("unknown task type: %s", task.TaskType)
+		automationLog.Error("Unknown task type", map[string]interface{}{
+			"task_id":   task.ID,
+			"user_id":   task.UserID,
+			"task_type": task.TaskType,
+		})
 		p.supabase.UpdateAutomationTaskStatus(task.ID, string(dto.TaskStatusFailed), 0, 0, 0, &errMsg)
 		return
 	}
@@ -105,8 +176,26 @@ func (p *AutomationProcessor) ProcessTask(ctx context.Context, task *dto.Automat
 		status = dto.TaskStatusFailed
 	}
 
+	duration := time.Since(startTime)
 	p.supabase.UpdateAutomationTaskStatus(task.ID, string(status), len(results), succeeded, failed, nil)
-	log.Printf("[AutomationProcessor] Task completed: id=%s, succeeded=%d, failed=%d", task.ID, succeeded, failed)
+
+	automationLog.Info("TASK COMPLETED", map[string]interface{}{
+		"task_id":      task.ID,
+		"user_id":      task.UserID,
+		"task_type":    task.TaskType,
+		"status":       status,
+		"total":        len(results),
+		"succeeded":    succeeded,
+		"failed":       failed,
+		"duration_sec": duration.Seconds(),
+		"avg_per_lead": func() float64 {
+			if len(results) > 0 {
+				return duration.Seconds() / float64(len(results))
+			}
+			return 0
+		}(),
+	})
+	automationLog.Info("═══════════════════════════════════════════════════════════", nil)
 }
 
 // processEnrichment scrapes websites and extracts data for leads
@@ -144,7 +233,12 @@ func (p *AutomationProcessor) processEnrichment(ctx context.Context, leadIDs []s
 			p.supabase.UpdateAutomationTaskStatus(taskID, string(dto.TaskStatusProcessing), len(leadIDs), succeeded, failed, nil)
 			mu.Unlock()
 
-			log.Printf("[AutomationProcessor] Enrichment progress: %d/%d", processedCount, len(leadIDs))
+			automationLog.Debug("Enrichment progress", map[string]interface{}{
+				"task_id":   taskID,
+				"processed": processedCount,
+				"total":     len(leadIDs),
+				"percent":   float64(processedCount) / float64(len(leadIDs)) * 100,
+			})
 		}(i, leadID)
 	}
 
@@ -165,6 +259,10 @@ func (p *AutomationProcessor) enrichSingleLead(ctx context.Context, leadID strin
 
 	// Need website to scrape
 	if lead.Website == nil || *lead.Website == "" {
+		automationLog.Warn("Lead has no website - skipping enrichment", map[string]interface{}{
+			"lead_id":      leadID,
+			"company_name": lead.CompanyName,
+		})
 		result.Error = "lead has no website"
 		return result
 	}
@@ -172,9 +270,15 @@ func (p *AutomationProcessor) enrichSingleLead(ctx context.Context, leadID strin
 	// Scrape website with retry
 	var scraped *handlers.ScrapedPage
 	var scrapeErr error
+	scrapeStart := time.Now()
 	for attempt := 0; attempt <= MaxRetries; attempt++ {
 		if attempt > 0 {
-			log.Printf("[AutomationProcessor] Retry %d for scraping lead %s", attempt, leadID)
+			automationLog.Warn("Retrying scrape", map[string]interface{}{
+				"lead_id": leadID,
+				"website": *lead.Website,
+				"attempt": attempt,
+				"max":     MaxRetries,
+			})
 			time.Sleep(RetryDelay)
 		}
 		scraped, scrapeErr = p.firecrawlHandler.ScrapeURL(*lead.Website)
@@ -182,6 +286,7 @@ func (p *AutomationProcessor) enrichSingleLead(ctx context.Context, leadID strin
 			break
 		}
 	}
+	scrapeDuration := time.Since(scrapeStart)
 
 	if scrapeErr != nil || !scraped.Success {
 		errMsg := "unknown error"
@@ -190,6 +295,12 @@ func (p *AutomationProcessor) enrichSingleLead(ctx context.Context, leadID strin
 		} else if scraped != nil {
 			errMsg = scraped.Error
 		}
+		automationLog.Error("Failed to scrape website", map[string]interface{}{
+			"lead_id":      leadID,
+			"website":      *lead.Website,
+			"error":        errMsg,
+			"duration_sec": scrapeDuration.Seconds(),
+		})
 		result.Error = fmt.Sprintf("failed to scrape website: %s", errMsg)
 		return result
 	}
@@ -214,7 +325,15 @@ func (p *AutomationProcessor) enrichSingleLead(ctx context.Context, leadID strin
 
 	result.Success = true
 	result.Enriched = true
-	log.Printf("[AutomationProcessor] ✓ Lead enriched: id=%s", leadID)
+	automationLog.Info("✓ Lead enriched successfully", map[string]interface{}{
+		"lead_id":         leadID,
+		"company_name":    lead.CompanyName,
+		"website":         *lead.Website,
+		"scrape_duration": scrapeDuration.Seconds(),
+		"emails_found":    len(extracted.Emails),
+		"phones_found":    len(extracted.Phones),
+		"contact_found":   extracted.Contact != "",
+	})
 	return result
 }
 
@@ -228,7 +347,17 @@ func (p *AutomationProcessor) processPreCallGeneration(ctx context.Context, lead
 		var err error
 		profile, err = p.supabase.GetBusinessProfile(*businessProfileID)
 		if err != nil {
-			log.Printf("[AutomationProcessor] Warning: could not get business profile: %v", err)
+			automationLog.Warn("Could not get business profile", map[string]interface{}{
+				"task_id":             taskID,
+				"business_profile_id": *businessProfileID,
+				"error":               err.Error(),
+			})
+		} else {
+			automationLog.Info("Using business profile for pre-call generation", map[string]interface{}{
+				"task_id":      taskID,
+				"profile_id":   *businessProfileID,
+				"company_name": profile.CompanyName,
+			})
 		}
 	}
 
@@ -252,7 +381,12 @@ func (p *AutomationProcessor) processPreCallGeneration(ctx context.Context, lead
 			}
 		}
 		p.supabase.UpdateAutomationTaskStatus(taskID, string(dto.TaskStatusProcessing), len(leadIDs), succeeded, failed, nil)
-		log.Printf("[AutomationProcessor] Pre-call progress: %d/%d", i+1, len(leadIDs))
+		automationLog.Debug("Pre-call progress", map[string]interface{}{
+			"task_id":   taskID,
+			"processed": i + 1,
+			"total":     len(leadIDs),
+			"percent":   float64(i+1) / float64(len(leadIDs)) * 100,
+		})
 	}
 
 	return results
@@ -311,7 +445,10 @@ func (p *AutomationProcessor) generatePreCallForLead(ctx context.Context, leadID
 
 	result.Success = true
 	result.PreCall = true
-	log.Printf("[AutomationProcessor] ✓ Pre-call generated: lead_id=%s", leadID)
+	automationLog.Info("✓ Pre-call report generated", map[string]interface{}{
+		"lead_id":      leadID,
+		"company_name": lead.CompanyName,
+	})
 	return result
 }
 
@@ -325,7 +462,18 @@ func (p *AutomationProcessor) processEmailGeneration(ctx context.Context, leadID
 		var err error
 		profile, err = p.supabase.GetBusinessProfile(*businessProfileID)
 		if err != nil {
-			log.Printf("[AutomationProcessor] Warning: could not get business profile: %v", err)
+			automationLog.Warn("Could not get business profile", map[string]interface{}{
+				"task_id":             taskID,
+				"business_profile_id": *businessProfileID,
+				"error":               err.Error(),
+			})
+		} else {
+			automationLog.Info("Using business profile for email generation", map[string]interface{}{
+				"task_id":      taskID,
+				"profile_id":   *businessProfileID,
+				"company_name": profile.CompanyName,
+				"sender_name":  profile.SenderName,
+			})
 		}
 	}
 
@@ -349,7 +497,12 @@ func (p *AutomationProcessor) processEmailGeneration(ctx context.Context, leadID
 			}
 		}
 		p.supabase.UpdateAutomationTaskStatus(taskID, string(dto.TaskStatusProcessing), len(leadIDs), succeeded, failed, nil)
-		log.Printf("[AutomationProcessor] Email progress: %d/%d", i+1, len(leadIDs))
+		automationLog.Debug("Email generation progress", map[string]interface{}{
+			"task_id":   taskID,
+			"processed": i + 1,
+			"total":     len(leadIDs),
+			"percent":   float64(i+1) / float64(len(leadIDs)) * 100,
+		})
 	}
 
 	return results
@@ -384,9 +537,14 @@ func (p *AutomationProcessor) generateEmailForLead(ctx context.Context, leadID s
 
 	// Generate email with retry
 	var email *handlers.ColdEmail
+	emailStart := time.Now()
 	for attempt := 0; attempt <= MaxRetries; attempt++ {
 		if attempt > 0 {
-			log.Printf("[AutomationProcessor] Retry %d for email lead %s", attempt, leadID)
+			automationLog.Warn("Retrying email generation", map[string]interface{}{
+				"lead_id": leadID,
+				"attempt": attempt,
+				"max":     MaxRetries,
+			})
 			time.Sleep(RetryDelay)
 		}
 		email = p.coldEmailHandler.GenerateEmail(ctx, input)
@@ -394,8 +552,14 @@ func (p *AutomationProcessor) generateEmailForLead(ctx context.Context, leadID s
 			break
 		}
 	}
+	emailDuration := time.Since(emailStart)
 
 	if !email.Success {
+		automationLog.Error("Failed to generate email", map[string]interface{}{
+			"lead_id":      leadID,
+			"error":        email.Error,
+			"duration_sec": emailDuration.Seconds(),
+		})
 		result.Error = fmt.Sprintf("failed to generate email: %s", email.Error)
 		return result
 	}
@@ -427,7 +591,14 @@ func (p *AutomationProcessor) generateEmailForLead(ctx context.Context, leadID s
 
 	result.Success = true
 	result.Email = true
-	log.Printf("[AutomationProcessor] ✓ Email generated: lead_id=%s", leadID)
+	automationLog.Info("✓ Cold email generated", map[string]interface{}{
+		"lead_id":      leadID,
+		"company_name": lead.CompanyName,
+		"to_email":     toEmail,
+		"subject":      email.Subject,
+		"duration_sec": emailDuration.Seconds(),
+		"has_precall":  preCallContent != "",
+	})
 	return result
 }
 
@@ -441,7 +612,11 @@ func (p *AutomationProcessor) processFullEnrichment(ctx context.Context, leadIDs
 		var err error
 		profile, err = p.supabase.GetBusinessProfile(*businessProfileID)
 		if err != nil {
-			log.Printf("[AutomationProcessor] Warning: could not get business profile: %v", err)
+			automationLog.Warn("Could not get business profile for full enrichment", map[string]interface{}{
+				"task_id":             taskID,
+				"business_profile_id": *businessProfileID,
+				"error":               err.Error(),
+			})
 		}
 	}
 
@@ -511,7 +686,12 @@ func (p *AutomationProcessor) processFullEnrichment(ctx context.Context, leadIDs
 			p.supabase.UpdateAutomationTaskStatus(taskID, string(dto.TaskStatusProcessing), len(leadIDs), succeeded, failed, nil)
 			mu.Unlock()
 
-			log.Printf("[AutomationProcessor] Full enrichment progress: %d/%d", processedCount, len(leadIDs))
+			automationLog.Debug("Full enrichment progress", map[string]interface{}{
+				"task_id":   taskID,
+				"processed": processedCount,
+				"total":     len(leadIDs),
+				"percent":   float64(processedCount) / float64(len(leadIDs)) * 100,
+			})
 		}(i, leadID)
 	}
 
@@ -521,18 +701,43 @@ func (p *AutomationProcessor) processFullEnrichment(ctx context.Context, leadIDs
 
 // ProcessLeadCreated handles auto-enrichment when a new lead is created
 func (p *AutomationProcessor) ProcessLeadCreated(ctx context.Context, lead *dto.Lead) {
-	log.Printf("[AutomationProcessor] Processing new lead: id=%s, company=%s", lead.ID, lead.CompanyName)
+	startTime := time.Now()
+
+	automationLog.Info("───────────────────────────────────────────────────────────", nil)
+	automationLog.Info("AUTO-ENRICHMENT TRIGGERED", map[string]interface{}{
+		"lead_id":      lead.ID,
+		"user_id":      lead.UserID,
+		"company_name": lead.CompanyName,
+		"website":      lead.Website,
+		"triggered_at": startTime.Format(time.RFC3339),
+	})
 
 	// Get user's automation config
 	config, err := p.supabase.GetAutomationConfig(lead.UserID)
 	if err != nil {
-		log.Printf("[AutomationProcessor] No automation config for user %s: %v", lead.UserID, err)
+		automationLog.Info("No automation config found for user - skipping", map[string]interface{}{
+			"user_id": lead.UserID,
+			"lead_id": lead.ID,
+			"reason":  err.Error(),
+		})
 		return
 	}
 
+	automationLog.Info("User automation config loaded", map[string]interface{}{
+		"user_id":            lead.UserID,
+		"auto_enrich":        config.AutoEnrichNewLeads,
+		"auto_precall":       config.AutoGeneratePreCall,
+		"auto_email":         config.AutoGenerateEmail,
+		"default_profile_id": config.DefaultBusinessProfileID,
+		"daily_limit":        config.DailyAutomationLimit,
+	})
+
 	// Check if any automation is enabled
 	if !config.AutoEnrichNewLeads && !config.AutoGeneratePreCall && !config.AutoGenerateEmail {
-		log.Printf("[AutomationProcessor] No automations enabled for user %s", lead.UserID)
+		automationLog.Info("All automations disabled for user - skipping", map[string]interface{}{
+			"user_id": lead.UserID,
+			"lead_id": lead.ID,
+		})
 		return
 	}
 
@@ -548,11 +753,24 @@ func (p *AutomationProcessor) ProcessLeadCreated(ctx context.Context, lead *dto.
 		taskType = dto.TaskTypeEmailGeneration
 	}
 
-	log.Printf("[AutomationProcessor] Auto-processing lead %s with task type: %s", lead.ID, taskType)
+	automationLog.Info("Starting auto-processing", map[string]interface{}{
+		"lead_id":    lead.ID,
+		"user_id":    lead.UserID,
+		"task_type":  taskType,
+		"profile_id": config.DefaultBusinessProfileID,
+	})
 
-	// Create and process task inline (for single leads, no need to queue)
-	task := &dto.AutomationTask{
-		ID:                fmt.Sprintf("auto-%s-%d", lead.ID, time.Now().UnixNano()),
+	// Create task ID for logging (processing inline for single leads)
+	taskID := fmt.Sprintf("auto-%s-%d", lead.ID, time.Now().UnixNano())
+	automationLog.Debug("Created inline task", map[string]interface{}{
+		"task_id":   taskID,
+		"lead_id":   lead.ID,
+		"task_type": taskType,
+	})
+
+	// Note: We process inline for single leads, no need to persist task to DB
+	_ = &dto.AutomationTask{
+		ID:                taskID,
 		UserID:            lead.UserID,
 		TaskType:          taskType,
 		LeadID:            &lead.ID,
@@ -606,5 +824,12 @@ func (p *AutomationProcessor) ProcessLeadCreated(ctx context.Context, lead *dto.
 		}
 	}
 
-	log.Printf("[AutomationProcessor] Auto-processing completed for lead %s", task.ID)
+	duration := time.Since(startTime)
+	automationLog.Info("AUTO-ENRICHMENT COMPLETED", map[string]interface{}{
+		"lead_id":      lead.ID,
+		"user_id":      lead.UserID,
+		"task_type":    taskType,
+		"duration_sec": duration.Seconds(),
+	})
+	automationLog.Info("───────────────────────────────────────────────────────────", nil)
 }

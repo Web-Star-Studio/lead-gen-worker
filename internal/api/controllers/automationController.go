@@ -2,14 +2,25 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"webstar/noturno-leadgen-worker/internal/dto"
 	"webstar/noturno-leadgen-worker/internal/services"
 
 	"github.com/gin-gonic/gin"
 )
+
+// automationControllerLog provides structured logging for automation controller
+func automationControllerLog(level, msg string, fields map[string]interface{}) {
+	fieldStr := ""
+	for k, v := range fields {
+		fieldStr += fmt.Sprintf(" %s=%v", k, v)
+	}
+	log.Printf("[AutomationController] [%s] %s%s", level, msg, fieldStr)
+}
 
 // AutomationController handles automation webhook requests
 type AutomationController struct {
@@ -39,14 +50,33 @@ func NewAutomationController(webhookSecret string, processor *services.Automatio
 // @Failure 400 {object} dto.ErrorResponse "Bad request"
 // @Router /webhooks/automation-task [post]
 func (c *AutomationController) HandleAutomationTask(ctx *gin.Context) {
+	requestTime := time.Now()
+	clientIP := ctx.ClientIP()
+	userAgent := ctx.GetHeader("User-Agent")
+
+	automationControllerLog("INFO", "Webhook received: automation-task", map[string]interface{}{
+		"endpoint":    "/webhooks/automation-task",
+		"client_ip":   clientIP,
+		"user_agent":  userAgent,
+		"received_at": requestTime.Format(time.RFC3339),
+	})
+
 	// Validate auth
 	if !c.validateAuth(ctx) {
+		automationControllerLog("WARN", "Unauthorized request rejected", map[string]interface{}{
+			"endpoint":  "/webhooks/automation-task",
+			"client_ip": clientIP,
+		})
 		return
 	}
 
 	var task dto.AutomationTask
 	if err := ctx.ShouldBindJSON(&task); err != nil {
-		log.Printf("[AutomationController] Failed to parse task payload: %v", err)
+		automationControllerLog("ERROR", "Failed to parse task payload", map[string]interface{}{
+			"endpoint":  "/webhooks/automation-task",
+			"client_ip": clientIP,
+			"error":     err.Error(),
+		})
 		ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: "Invalid task payload"})
 		return
 	}
@@ -56,8 +86,15 @@ func (c *AutomationController) HandleAutomationTask(ctx *gin.Context) {
 		leadCount++
 	}
 
-	log.Printf("[AutomationController] Task received: id=%s, type=%s, leads=%d",
-		task.ID, task.TaskType, leadCount)
+	automationControllerLog("INFO", "Task accepted for processing", map[string]interface{}{
+		"task_id":             task.ID,
+		"user_id":             task.UserID,
+		"task_type":           task.TaskType,
+		"lead_count":          leadCount,
+		"priority":            task.Priority,
+		"business_profile_id": task.BusinessProfileID,
+		"client_ip":           clientIP,
+	})
 
 	ctx.JSON(http.StatusOK, gin.H{"status": "accepted", "task_id": task.ID})
 
@@ -79,20 +116,44 @@ func (c *AutomationController) HandleAutomationTask(ctx *gin.Context) {
 // @Failure 400 {object} dto.ErrorResponse "Bad request"
 // @Router /webhooks/lead-created [post]
 func (c *AutomationController) HandleLeadCreated(ctx *gin.Context) {
+	requestTime := time.Now()
+	clientIP := ctx.ClientIP()
+	userAgent := ctx.GetHeader("User-Agent")
+
+	automationControllerLog("INFO", "Webhook received: lead-created", map[string]interface{}{
+		"endpoint":    "/webhooks/lead-created",
+		"client_ip":   clientIP,
+		"user_agent":  userAgent,
+		"received_at": requestTime.Format(time.RFC3339),
+	})
+
 	// Validate auth
 	if !c.validateAuth(ctx) {
+		automationControllerLog("WARN", "Unauthorized request rejected", map[string]interface{}{
+			"endpoint":  "/webhooks/lead-created",
+			"client_ip": clientIP,
+		})
 		return
 	}
 
 	var lead dto.Lead
 	if err := ctx.ShouldBindJSON(&lead); err != nil {
-		log.Printf("[AutomationController] Failed to parse lead payload: %v", err)
+		automationControllerLog("ERROR", "Failed to parse lead payload", map[string]interface{}{
+			"endpoint":  "/webhooks/lead-created",
+			"client_ip": clientIP,
+			"error":     err.Error(),
+		})
 		ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: "Invalid lead payload"})
 		return
 	}
 
-	log.Printf("[AutomationController] Lead created webhook: id=%s, company=%s, user=%s",
-		lead.ID, lead.CompanyName, lead.UserID)
+	automationControllerLog("INFO", "Lead created - checking for auto-enrichment", map[string]interface{}{
+		"lead_id":      lead.ID,
+		"user_id":      lead.UserID,
+		"company_name": lead.CompanyName,
+		"website":      lead.Website,
+		"client_ip":    clientIP,
+	})
 
 	ctx.JSON(http.StatusOK, gin.H{"status": "accepted", "lead_id": lead.ID})
 
@@ -114,20 +175,43 @@ func (c *AutomationController) HandleLeadCreated(ctx *gin.Context) {
 // @Failure 400 {object} dto.ErrorResponse "Bad request"
 // @Router /webhooks/batch-enrichment [post]
 func (c *AutomationController) HandleBatchEnrichment(ctx *gin.Context) {
+	requestTime := time.Now()
+	clientIP := ctx.ClientIP()
+	userAgent := ctx.GetHeader("User-Agent")
+
+	automationControllerLog("INFO", "Webhook received: batch-enrichment", map[string]interface{}{
+		"endpoint":    "/webhooks/batch-enrichment",
+		"client_ip":   clientIP,
+		"user_agent":  userAgent,
+		"received_at": requestTime.Format(time.RFC3339),
+	})
+
 	// Validate auth
 	if !c.validateAuth(ctx) {
+		automationControllerLog("WARN", "Unauthorized request rejected", map[string]interface{}{
+			"endpoint":  "/webhooks/batch-enrichment",
+			"client_ip": clientIP,
+		})
 		return
 	}
 
 	var request dto.AutomationTaskCreate
 	if err := ctx.ShouldBindJSON(&request); err != nil {
-		log.Printf("[AutomationController] Failed to parse batch request: %v", err)
+		automationControllerLog("ERROR", "Failed to parse batch request", map[string]interface{}{
+			"endpoint":  "/webhooks/batch-enrichment",
+			"client_ip": clientIP,
+			"error":     err.Error(),
+		})
 		ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: "Invalid batch request"})
 		return
 	}
 
 	// Validate task type
 	if request.TaskType == "" {
+		automationControllerLog("WARN", "Missing task_type in request", map[string]interface{}{
+			"user_id":   request.UserID,
+			"client_ip": clientIP,
+		})
 		ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: "task_type is required"})
 		return
 	}
@@ -138,12 +222,23 @@ func (c *AutomationController) HandleBatchEnrichment(ctx *gin.Context) {
 		leadCount++
 	}
 	if leadCount == 0 {
+		automationControllerLog("WARN", "No leads provided in batch request", map[string]interface{}{
+			"user_id":   request.UserID,
+			"task_type": request.TaskType,
+			"client_ip": clientIP,
+		})
 		ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: "at least one lead_id is required"})
 		return
 	}
 
-	log.Printf("[AutomationController] Batch enrichment: type=%s, leads=%d, user=%s",
-		request.TaskType, leadCount, request.UserID)
+	automationControllerLog("INFO", "Batch enrichment request accepted", map[string]interface{}{
+		"user_id":             request.UserID,
+		"task_type":           request.TaskType,
+		"lead_count":          leadCount,
+		"business_profile_id": request.BusinessProfileID,
+		"priority":            request.Priority,
+		"client_ip":           clientIP,
+	})
 
 	// Set default priority if not provided
 	if request.Priority == 0 {
@@ -179,7 +274,13 @@ func (c *AutomationController) validateAuth(ctx *gin.Context) bool {
 	expectedAuth := "Bearer " + c.webhookSecret
 
 	if authHeader != expectedAuth {
-		log.Printf("[AutomationController] Unauthorized request")
+		// Don't log the actual auth header for security reasons
+		hasAuth := authHeader != ""
+		automationControllerLog("WARN", "Authentication failed", map[string]interface{}{
+			"has_auth_header": hasAuth,
+			"client_ip":       ctx.ClientIP(),
+			"path":            ctx.Request.URL.Path,
+		})
 		ctx.JSON(http.StatusUnauthorized, dto.ErrorResponse{Error: "Unauthorized"})
 		return false
 	}
