@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -411,12 +412,34 @@ func (p *AutomationProcessor) generatePreCallForLead(ctx context.Context, leadID
 		orgResult.Link = *lead.Website
 	}
 
+	// Build ExtractedData from lead data
+	orgResult.ExtractedData = &handlers.ExtractedData{
+		Success:     true,
+		Company:     lead.CompanyName,
+		Contact:     lead.ContactName,
+		ContactRole: lead.ContactRole,
+		Emails:      lead.Emails,
+		Phones:      lead.Phones,
+		Address:     lead.Address,
+		SocialMedia: lead.SocialMedia,
+	}
+
 	// Try to get scraped content if we have website
 	if lead.Website != nil && *lead.Website != "" {
 		scraped, err := p.firecrawlHandler.ScrapeURL(*lead.Website)
 		if err == nil && scraped.Success {
 			orgResult.ScrapedContent = scraped.Markdown
 		}
+	}
+
+	// If no scraped content but we have extra_data from CNPJ import, build rich content
+	if orgResult.ScrapedContent == "" && lead.ExtraData != nil {
+		orgResult.ScrapedContent = buildContentFromExtraData(lead)
+		automationLog.Info("Using CNPJ data for pre-call generation", map[string]interface{}{
+			"lead_id":          leadID,
+			"cnpj":             lead.ExtraData.CNPJ,
+			"cnae_description": lead.ExtraData.CNAEDescription,
+		})
 	}
 
 	// Generate report with retry
@@ -528,6 +551,28 @@ func (p *AutomationProcessor) generateEmailForLead(ctx context.Context, leadID s
 	}
 	if lead.Website != nil {
 		orgResult.Link = *lead.Website
+	}
+
+	// Add extracted data from lead
+	orgResult.ExtractedData = &handlers.ExtractedData{
+		Success:     true,
+		Company:     lead.CompanyName,
+		Contact:     lead.ContactName,
+		ContactRole: lead.ContactRole,
+		Emails:      lead.Emails,
+		Phones:      lead.Phones,
+		Address:     lead.Address,
+		SocialMedia: lead.SocialMedia,
+	}
+
+	// If no pre-call content and we have extra_data, add it to scraped content
+	if preCallContent == "" && lead.ExtraData != nil {
+		orgResult.ScrapedContent = buildContentFromExtraData(lead)
+		automationLog.Info("Using CNPJ data for email generation", map[string]interface{}{
+			"lead_id":          leadID,
+			"cnpj":             lead.ExtraData.CNPJ,
+			"cnae_description": lead.ExtraData.CNAEDescription,
+		})
 	}
 
 	input := handlers.EmailGenerationInput{
@@ -837,4 +882,103 @@ func (p *AutomationProcessor) ProcessLeadCreated(ctx context.Context, lead *dto.
 		"duration_sec": duration.Seconds(),
 	})
 	automationLog.Info("───────────────────────────────────────────────────────────", nil)
+}
+
+// buildContentFromExtraData creates rich content from CNPJ import data for AI processing
+func buildContentFromExtraData(lead *dto.Lead) string {
+	if lead.ExtraData == nil {
+		return ""
+	}
+
+	extra := lead.ExtraData
+	var content strings.Builder
+
+	content.WriteString("# Informações da Empresa (Dados da Receita Federal)\n\n")
+
+	// Company identification
+	if extra.RazaoSocial != "" {
+		content.WriteString(fmt.Sprintf("**Razão Social**: %s\n", extra.RazaoSocial))
+	}
+	if extra.NomeFantasia != "" {
+		content.WriteString(fmt.Sprintf("**Nome Fantasia**: %s\n", extra.NomeFantasia))
+	}
+	if extra.CNPJ != "" {
+		content.WriteString(fmt.Sprintf("**CNPJ**: %s\n", extra.CNPJ))
+	}
+
+	// Business activity
+	content.WriteString("\n## Atividade Principal\n")
+	if extra.CNAEDescription != "" {
+		content.WriteString(fmt.Sprintf("**Descrição**: %s\n", extra.CNAEDescription))
+	}
+	if extra.CNAECode != "" {
+		content.WriteString(fmt.Sprintf("**Código CNAE**: %s\n", extra.CNAECode))
+	}
+
+	// Secondary activities
+	if extra.SecondaryActivities != nil {
+		if descriptions, ok := extra.SecondaryActivities["descriptions"].([]interface{}); ok && len(descriptions) > 0 {
+			content.WriteString("\n## Atividades Secundárias\n")
+			for _, desc := range descriptions {
+				if str, ok := desc.(string); ok {
+					content.WriteString(fmt.Sprintf("- %s\n", str))
+				}
+			}
+		}
+	}
+
+	// Company details
+	content.WriteString("\n## Dados da Empresa\n")
+	if extra.LegalNature != "" {
+		content.WriteString(fmt.Sprintf("**Natureza Jurídica**: %s\n", extra.LegalNature))
+	}
+	if extra.CompanySize != "" {
+		content.WriteString(fmt.Sprintf("**Porte**: %s\n", extra.CompanySize))
+	}
+	if extra.Capital != "" && extra.Capital != "0" {
+		content.WriteString(fmt.Sprintf("**Capital Social**: R$ %s\n", extra.Capital))
+	}
+	if extra.FoundedAt != "" {
+		content.WriteString(fmt.Sprintf("**Data de Fundação**: %s\n", extra.FoundedAt))
+	}
+	if extra.Status != "" {
+		content.WriteString(fmt.Sprintf("**Situação Cadastral**: %s\n", extra.Status))
+	}
+
+	// Tax regime
+	if extra.SimplesOptante {
+		content.WriteString("**Optante pelo Simples**: Sim\n")
+	}
+	if extra.MEIOptante {
+		content.WriteString("**MEI**: Sim\n")
+	}
+
+	// Partners/Owners
+	if len(extra.Partners) > 0 {
+		content.WriteString("\n## Sócios/Proprietários\n")
+		for _, partner := range extra.Partners {
+			content.WriteString(fmt.Sprintf("- %s\n", partner))
+		}
+	}
+
+	// Contact info from lead
+	content.WriteString("\n## Informações de Contato\n")
+	if lead.ContactName != "" && lead.ContactName != "Não informado" {
+		content.WriteString(fmt.Sprintf("**Contato**: %s", lead.ContactName))
+		if lead.ContactRole != "" {
+			content.WriteString(fmt.Sprintf(" (%s)", lead.ContactRole))
+		}
+		content.WriteString("\n")
+	}
+	if len(lead.Emails) > 0 {
+		content.WriteString(fmt.Sprintf("**E-mails**: %s\n", strings.Join(lead.Emails, ", ")))
+	}
+	if len(lead.Phones) > 0 {
+		content.WriteString(fmt.Sprintf("**Telefones**: %s\n", strings.Join(lead.Phones, ", ")))
+	}
+	if lead.Address != "" {
+		content.WriteString(fmt.Sprintf("**Endereço**: %s\n", lead.Address))
+	}
+
+	return content.String()
 }
