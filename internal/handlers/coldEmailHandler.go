@@ -232,7 +232,7 @@ REGRAS IMPORTANTES:
 - Use tom profissional mas humano (não robótico)
 - Personalize com dados específicos do prospect (nome, empresa, setor)
 - Nunca use "Prezado(a)" ou "Caro(a)" - use o primeiro nome
-- Termine com assinatura simples (nome do remetente)
+- NÃO inclua assinatura, saudação final ou footer (ex: "Atenciosamente", "[Seu Nome]", nome da empresa). A assinatura será adicionada automaticamente pelo sistema de envio.
 - Não use emojis excessivos
 - Evite anexos ou links suspeitos na primeira mensagem
 
