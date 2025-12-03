@@ -1,8 +1,11 @@
 package controllers
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -20,6 +23,15 @@ func automationControllerLog(level, msg string, fields map[string]interface{}) {
 		fieldStr += fmt.Sprintf(" %s=%v", k, v)
 	}
 	log.Printf("[AutomationController] [%s] %s%s", level, msg, fieldStr)
+}
+
+// SupabaseWebhookPayload wraps the actual record data from Supabase webhooks
+type SupabaseWebhookPayload struct {
+	Type      string                 `json:"type"`       // INSERT, UPDATE, DELETE
+	Table     string                 `json:"table"`      // Table name
+	Schema    string                 `json:"schema"`     // Schema name (usually "public")
+	Record    map[string]interface{} `json:"record"`     // The actual record data
+	OldRecord map[string]interface{} `json:"old_record"` // Previous record (for UPDATE/DELETE)
 }
 
 // AutomationController handles automation webhook requests
@@ -70,15 +82,40 @@ func (c *AutomationController) HandleAutomationTask(ctx *gin.Context) {
 		return
 	}
 
+	// Read raw body for potential re-parsing
+	rawBody, _ := io.ReadAll(ctx.Request.Body)
+	ctx.Request.Body = io.NopCloser(bytes.NewBuffer(rawBody))
+
+	// Log raw payload for debugging
+	automationControllerLog("DEBUG", "Raw webhook payload", map[string]interface{}{
+		"payload_size": len(rawBody),
+		"payload":      string(rawBody),
+	})
+
+	// Try to parse as Supabase webhook format first
 	var task dto.AutomationTask
-	if err := ctx.ShouldBindJSON(&task); err != nil {
-		automationControllerLog("ERROR", "Failed to parse task payload", map[string]interface{}{
-			"endpoint":  "/webhooks/automation-task",
-			"client_ip": clientIP,
-			"error":     err.Error(),
+	var webhook SupabaseWebhookPayload
+
+	if err := json.Unmarshal(rawBody, &webhook); err == nil && webhook.Record != nil {
+		// Supabase webhook format - extract record
+		automationControllerLog("INFO", "Parsing Supabase webhook format", map[string]interface{}{
+			"type":   webhook.Type,
+			"table":  webhook.Table,
+			"schema": webhook.Schema,
 		})
-		ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: "Invalid task payload"})
-		return
+		task = parseAutomationTaskFromRecord(webhook.Record)
+	} else {
+		// Try direct format (for manual API calls)
+		ctx.Request.Body = io.NopCloser(bytes.NewBuffer(rawBody))
+		if err := ctx.ShouldBindJSON(&task); err != nil {
+			automationControllerLog("ERROR", "Failed to parse task payload", map[string]interface{}{
+				"endpoint":  "/webhooks/automation-task",
+				"client_ip": clientIP,
+				"error":     err.Error(),
+			})
+			ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: "Invalid task payload"})
+			return
+		}
 	}
 
 	leadCount := len(task.LeadIDs)
@@ -136,15 +173,40 @@ func (c *AutomationController) HandleLeadCreated(ctx *gin.Context) {
 		return
 	}
 
+	// Read raw body for potential re-parsing
+	rawBody, _ := io.ReadAll(ctx.Request.Body)
+	ctx.Request.Body = io.NopCloser(bytes.NewBuffer(rawBody))
+
+	// Log raw payload for debugging
+	automationControllerLog("DEBUG", "Raw webhook payload", map[string]interface{}{
+		"payload_size": len(rawBody),
+		"payload":      string(rawBody),
+	})
+
+	// Try to parse as Supabase webhook format first
 	var lead dto.Lead
-	if err := ctx.ShouldBindJSON(&lead); err != nil {
-		automationControllerLog("ERROR", "Failed to parse lead payload", map[string]interface{}{
-			"endpoint":  "/webhooks/lead-created",
-			"client_ip": clientIP,
-			"error":     err.Error(),
+	var webhook SupabaseWebhookPayload
+
+	if err := json.Unmarshal(rawBody, &webhook); err == nil && webhook.Record != nil {
+		// Supabase webhook format - extract record
+		automationControllerLog("INFO", "Parsing Supabase webhook format", map[string]interface{}{
+			"type":   webhook.Type,
+			"table":  webhook.Table,
+			"schema": webhook.Schema,
 		})
-		ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: "Invalid lead payload"})
-		return
+		lead = parseLeadFromRecord(webhook.Record)
+	} else {
+		// Try direct format (for manual API calls)
+		ctx.Request.Body = io.NopCloser(bytes.NewBuffer(rawBody))
+		if err := ctx.ShouldBindJSON(&lead); err != nil {
+			automationControllerLog("ERROR", "Failed to parse lead payload", map[string]interface{}{
+				"endpoint":  "/webhooks/lead-created",
+				"client_ip": clientIP,
+				"error":     err.Error(),
+			})
+			ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: "Invalid lead payload"})
+			return
+		}
 	}
 
 	automationControllerLog("INFO", "Lead created - checking for auto-enrichment", map[string]interface{}{
@@ -298,4 +360,125 @@ func randomString(n int) string {
 		b[i] = letters[i%len(letters)]
 	}
 	return string(b)
+}
+
+// parseLeadFromRecord parses a Lead from a Supabase webhook record
+func parseLeadFromRecord(record map[string]interface{}) dto.Lead {
+	lead := dto.Lead{}
+
+	if id, ok := record["id"].(string); ok {
+		lead.ID = id
+	}
+	if userID, ok := record["user_id"].(string); ok {
+		lead.UserID = userID
+	}
+	if jobID, ok := record["job_id"].(string); ok {
+		lead.JobID = jobID
+	}
+	if companyName, ok := record["company_name"].(string); ok {
+		lead.CompanyName = companyName
+	}
+	if contactName, ok := record["contact_name"].(string); ok {
+		lead.ContactName = contactName
+	}
+	if contactRole, ok := record["contact_role"].(string); ok {
+		lead.ContactRole = contactRole
+	}
+	if website, ok := record["website"].(string); ok {
+		lead.Website = &website
+	}
+	if address, ok := record["address"].(string); ok {
+		lead.Address = address
+	}
+	if source, ok := record["source"].(string); ok {
+		lead.Source = source
+	}
+
+	// Parse emails array
+	if emails, ok := record["emails"].([]interface{}); ok {
+		for _, e := range emails {
+			if email, ok := e.(string); ok {
+				lead.Emails = append(lead.Emails, email)
+			}
+		}
+	}
+
+	// Parse phones array
+	if phones, ok := record["phones"].([]interface{}); ok {
+		for _, p := range phones {
+			if phone, ok := p.(string); ok {
+				lead.Phones = append(lead.Phones, phone)
+			}
+		}
+	}
+
+	// Parse social_media map
+	if socialMedia, ok := record["social_media"].(map[string]interface{}); ok {
+		lead.SocialMedia = make(map[string]string)
+		for k, v := range socialMedia {
+			if str, ok := v.(string); ok {
+				lead.SocialMedia[k] = str
+			}
+		}
+	}
+
+	automationControllerLog("DEBUG", "Parsed lead from record", map[string]interface{}{
+		"lead_id":      lead.ID,
+		"user_id":      lead.UserID,
+		"company_name": lead.CompanyName,
+		"website":      lead.Website,
+	})
+
+	return lead
+}
+
+// parseAutomationTaskFromRecord parses an AutomationTask from a Supabase webhook record
+func parseAutomationTaskFromRecord(record map[string]interface{}) dto.AutomationTask {
+	task := dto.AutomationTask{}
+
+	if id, ok := record["id"].(string); ok {
+		task.ID = id
+	}
+	if userID, ok := record["user_id"].(string); ok {
+		task.UserID = userID
+	}
+	if taskType, ok := record["task_type"].(string); ok {
+		task.TaskType = dto.TaskType(taskType)
+	}
+	if leadID, ok := record["lead_id"].(string); ok {
+		task.LeadID = &leadID
+	}
+	if businessProfileID, ok := record["business_profile_id"].(string); ok {
+		task.BusinessProfileID = &businessProfileID
+	}
+	if priority, ok := record["priority"].(float64); ok {
+		task.Priority = dto.TaskPriority(int(priority))
+	}
+	if status, ok := record["status"].(string); ok {
+		task.Status = dto.TaskStatus(status)
+	}
+	if itemsTotal, ok := record["items_total"].(float64); ok {
+		task.ItemsTotal = int(itemsTotal)
+	}
+	if maxRetries, ok := record["max_retries"].(float64); ok {
+		task.MaxRetries = int(maxRetries)
+	}
+
+	// Parse lead_ids array
+	if leadIDs, ok := record["lead_ids"].([]interface{}); ok {
+		for _, lid := range leadIDs {
+			if leadID, ok := lid.(string); ok {
+				task.LeadIDs = append(task.LeadIDs, leadID)
+			}
+		}
+	}
+
+	automationControllerLog("DEBUG", "Parsed automation task from record", map[string]interface{}{
+		"task_id":    task.ID,
+		"user_id":    task.UserID,
+		"task_type":  task.TaskType,
+		"lead_count": len(task.LeadIDs),
+	})
+
+	return task
 }
