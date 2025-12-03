@@ -357,3 +357,214 @@ func (h *SupabaseHandler) InsertColdEmail(email *dto.ColdEmailRecord) (string, e
 	log.Printf("[SupabaseHandler] Cold email inserted successfully: id=%s", emailID)
 	return emailID, nil
 }
+
+// ============================================================================
+// AUTOMATION METHODS
+// ============================================================================
+
+// GetLeadByID retrieves a lead by its ID
+func (h *SupabaseHandler) GetLeadByID(id string) (*dto.Lead, error) {
+	log.Printf("[SupabaseHandler] GetLeadByID: id=%s", id)
+
+	data, _, err := h.client.From("leads").
+		Select("*", "", false).
+		Eq("id", id).
+		Single().
+		Execute()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get lead: %w", err)
+	}
+
+	var lead dto.Lead
+	if err := json.Unmarshal(data, &lead); err != nil {
+		return nil, fmt.Errorf("failed to parse lead: %w", err)
+	}
+
+	return &lead, nil
+}
+
+// UpdateLeadEnrichment updates a lead with enriched data
+func (h *SupabaseHandler) UpdateLeadEnrichment(leadID string, data *ExtractedData) error {
+	log.Printf("[SupabaseHandler] UpdateLeadEnrichment: lead_id=%s", leadID)
+
+	updateData := map[string]interface{}{}
+
+	if data.Contact != "" {
+		updateData["contact_name"] = data.Contact
+	}
+	if data.ContactRole != "" {
+		updateData["contact_role"] = data.ContactRole
+	}
+	if len(data.Emails) > 0 {
+		updateData["emails"] = data.Emails
+	}
+	if len(data.Phones) > 0 {
+		updateData["phones"] = data.Phones
+	}
+	if data.Address != "" {
+		updateData["address"] = data.Address
+	}
+	if len(data.SocialMedia) > 0 {
+		updateData["social_media"] = data.SocialMedia
+	}
+
+	if len(updateData) == 0 {
+		log.Printf("[SupabaseHandler] No enrichment data to update for lead %s", leadID)
+		return nil
+	}
+
+	_, _, err := h.client.From("leads").
+		Update(updateData, "", "").
+		Eq("id", leadID).
+		Execute()
+	if err != nil {
+		return fmt.Errorf("failed to update lead enrichment: %w", err)
+	}
+
+	log.Printf("[SupabaseHandler] Lead enrichment updated: id=%s, fields=%d", leadID, len(updateData))
+	return nil
+}
+
+// UpdateLeadStatus updates the status of a lead
+func (h *SupabaseHandler) UpdateLeadStatus(leadID string, status string) error {
+	log.Printf("[SupabaseHandler] UpdateLeadStatus: lead_id=%s, status=%s", leadID, status)
+
+	updateData := map[string]interface{}{
+		"status": status,
+	}
+
+	_, _, err := h.client.From("leads").
+		Update(updateData, "", "").
+		Eq("id", leadID).
+		Execute()
+	if err != nil {
+		return fmt.Errorf("failed to update lead status: %w", err)
+	}
+
+	return nil
+}
+
+// GetAutomationConfig retrieves a user's automation config
+func (h *SupabaseHandler) GetAutomationConfig(userID string) (*dto.AutomationConfig, error) {
+	log.Printf("[SupabaseHandler] GetAutomationConfig: user_id=%s", userID)
+
+	data, _, err := h.client.From("automation_configs").
+		Select("*", "", false).
+		Eq("user_id", userID).
+		Single().
+		Execute()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get automation config: %w", err)
+	}
+
+	var config dto.AutomationConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse automation config: %w", err)
+	}
+
+	return &config, nil
+}
+
+// UpdateAutomationTaskStatus updates the status and progress of an automation task
+func (h *SupabaseHandler) UpdateAutomationTaskStatus(taskID string, status string, total, succeeded, failed int, errorMsg *string) error {
+	log.Printf("[SupabaseHandler] UpdateAutomationTaskStatus: task_id=%s, status=%s, total=%d, succeeded=%d, failed=%d",
+		taskID, status, total, succeeded, failed)
+
+	updateData := map[string]interface{}{
+		"status":          status,
+		"items_total":     total,
+		"items_processed": succeeded + failed,
+		"items_succeeded": succeeded,
+		"items_failed":    failed,
+	}
+
+	if status == "processing" {
+		updateData["started_at"] = time.Now().Format(time.RFC3339)
+	}
+
+	if status == "completed" || status == "failed" {
+		updateData["completed_at"] = time.Now().Format(time.RFC3339)
+	}
+
+	if errorMsg != nil {
+		updateData["error_message"] = *errorMsg
+	}
+
+	_, _, err := h.client.From("automation_tasks").
+		Update(updateData, "", "").
+		Eq("id", taskID).
+		Execute()
+	if err != nil {
+		return fmt.Errorf("failed to update automation task: %w", err)
+	}
+
+	return nil
+}
+
+// GetPreCallReportForLead retrieves the pre-call report content for a lead
+func (h *SupabaseHandler) GetPreCallReportForLead(leadID string) (string, error) {
+	log.Printf("[SupabaseHandler] GetPreCallReportForLead: lead_id=%s", leadID)
+
+	// Get the most recent pre-call report for this lead
+	data, _, err := h.client.From("pre_call_reports").
+		Select("content", "", false).
+		Eq("lead_id", leadID).
+		Single().
+		Execute()
+	if err != nil {
+		return "", fmt.Errorf("failed to get pre-call report: %w", err)
+	}
+
+	var result map[string]string
+	if err := json.Unmarshal(data, &result); err != nil {
+		return "", fmt.Errorf("failed to parse pre-call report: %w", err)
+	}
+
+	return result["content"], nil
+}
+
+// InsertAutomationTask creates a new automation task in the database
+func (h *SupabaseHandler) InsertAutomationTask(task *dto.AutomationTask) (string, error) {
+	log.Printf("[SupabaseHandler] InsertAutomationTask: type=%s, user=%s", task.TaskType, task.UserID)
+
+	insertData := map[string]interface{}{
+		"user_id":     task.UserID,
+		"task_type":   task.TaskType,
+		"priority":    task.Priority,
+		"status":      "pending",
+		"items_total": task.ItemsTotal,
+		"max_retries": task.MaxRetries,
+	}
+
+	if task.LeadID != nil {
+		insertData["lead_id"] = *task.LeadID
+	}
+	if len(task.LeadIDs) > 0 {
+		insertData["lead_ids"] = task.LeadIDs
+	}
+	if task.BusinessProfileID != nil {
+		insertData["business_profile_id"] = *task.BusinessProfileID
+	}
+
+	data, _, err := h.client.From("automation_tasks").Insert(insertData, false, "", "", "").Execute()
+	if err != nil {
+		return "", fmt.Errorf("failed to insert automation task: %w", err)
+	}
+
+	var inserted []map[string]interface{}
+	if err := json.Unmarshal(data, &inserted); err != nil {
+		return "", fmt.Errorf("failed to parse insert response: %w", err)
+	}
+
+	if len(inserted) == 0 {
+		return "", fmt.Errorf("no task was inserted")
+	}
+
+	taskID, ok := inserted[0]["id"].(string)
+	if !ok {
+		return "", fmt.Errorf("failed to get task ID from response")
+	}
+
+	log.Printf("[SupabaseHandler] Automation task inserted: id=%s", taskID)
+	return taskID, nil
+}

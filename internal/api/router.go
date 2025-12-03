@@ -12,7 +12,11 @@ import (
 )
 
 // NewRouter creates and configures a new Gin router
-func NewRouter(searchHandler *handlers.GoogleSearchHandler, webhookController *controllers.WebhookController) *gin.Engine {
+func NewRouter(
+	searchHandler *handlers.GoogleSearchHandler,
+	webhookController *controllers.WebhookController,
+	automationController *controllers.AutomationController,
+) *gin.Engine {
 	router := gin.Default() // Includes Logger and Recovery middleware
 
 	// Initialize controllers
@@ -35,10 +39,18 @@ func NewRouter(searchHandler *handlers.GoogleSearchHandler, webhookController *c
 	}
 
 	// Webhook routes (authentication handled in controller via webhook secret)
-	if webhookController != nil {
-		webhooks := router.Group("/webhooks")
-		{
+	webhooks := router.Group("/webhooks")
+	{
+		// Job creation webhook
+		if webhookController != nil {
 			webhooks.POST("/job-created", webhookController.HandleJobCreated)
+		}
+
+		// Automation webhooks
+		if automationController != nil {
+			webhooks.POST("/automation-task", automationController.HandleAutomationTask)
+			webhooks.POST("/lead-created", automationController.HandleLeadCreated)
+			webhooks.POST("/batch-enrichment", automationController.HandleBatchEnrichment)
 		}
 	}
 

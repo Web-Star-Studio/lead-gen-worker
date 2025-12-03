@@ -41,8 +41,10 @@ func main() {
 	searchHandler := handlers.NewGoogleSearchHandler(cfg.SerpAPIKey)
 
 	// Initialize FirecrawlHandler if API key is configured
+	var firecrawlHandler *handlers.FirecrawlHandler
 	if cfg.FirecrawlAPIKey != "" {
-		firecrawlHandler, err := handlers.NewFirecrawlHandler(cfg.FirecrawlAPIKey, cfg.FirecrawlAPIURL)
+		var err error
+		firecrawlHandler, err = handlers.NewFirecrawlHandler(cfg.FirecrawlAPIKey, cfg.FirecrawlAPIURL)
 		if err != nil {
 			log.Printf("Warning: Failed to initialize FirecrawlHandler: %v", err)
 			log.Printf("Continuing without website scraping functionality")
@@ -85,12 +87,14 @@ func main() {
 	}
 
 	// Initialize DataExtractorHandler if Google API key or Vertex AI is configured
+	var dataExtractorHandler *handlers.DataExtractorHandler
 	if cfg.GoogleAPIKey != "" || cfg.UseVertexAI {
 		// Debug: log first 10 chars of API key to verify correct key is loaded
 		if len(cfg.GoogleAPIKey) > 10 {
 			log.Printf("[DEBUG] GOOGLE_API_KEY loaded: %s...", cfg.GoogleAPIKey[:10])
 		}
-		dataExtractorHandler, err := handlers.NewDataExtractorHandler(handlers.DataExtractorConfig{
+		var err error
+		dataExtractorHandler, err = handlers.NewDataExtractorHandler(handlers.DataExtractorConfig{
 			APIKey:      cfg.GoogleAPIKey,
 			UseVertexAI: cfg.UseVertexAI,
 			GCPProject:  cfg.GCPProject,
@@ -115,8 +119,10 @@ func main() {
 	}
 
 	// Initialize PreCallReportHandler if Google API key or Vertex AI is configured
+	var preCallReportHandler *handlers.PreCallReportHandler
 	if cfg.GoogleAPIKey != "" || cfg.UseVertexAI {
-		preCallReportHandler, err := handlers.NewPreCallReportHandler(handlers.PreCallReportConfig{
+		var err error
+		preCallReportHandler, err = handlers.NewPreCallReportHandler(handlers.PreCallReportConfig{
 			APIKey:      cfg.GoogleAPIKey,
 			Model:       cfg.GeminiModel,
 			UseVertexAI: cfg.UseVertexAI,
@@ -144,8 +150,10 @@ func main() {
 	}
 
 	// Initialize ColdEmailHandler if Google API key or Vertex AI is configured
+	var coldEmailHandler *handlers.ColdEmailHandler
 	if cfg.GoogleAPIKey != "" || cfg.UseVertexAI {
-		coldEmailHandler, err := handlers.NewColdEmailHandler(handlers.ColdEmailConfig{
+		var err error
+		coldEmailHandler, err = handlers.NewColdEmailHandler(handlers.ColdEmailConfig{
 			APIKey:      cfg.GoogleAPIKey,
 			Model:       handlers.DefaultEmailModel, // Use flash model for faster generation
 			UseVertexAI: cfg.UseVertexAI,
@@ -168,8 +176,24 @@ func main() {
 		log.Printf("GOOGLE_API_KEY or Vertex AI not configured - cold email generation disabled")
 	}
 
+	// Initialize AutomationProcessor and AutomationController
+	var automationController *controllers.AutomationController
+	if supabaseHandler != nil && cfg.WebhookSecret != "" {
+		automationProcessor := services.NewAutomationProcessor(
+			supabaseHandler,
+			firecrawlHandler,
+			dataExtractorHandler,
+			preCallReportHandler,
+			coldEmailHandler,
+		)
+		automationController = controllers.NewAutomationController(cfg.WebhookSecret, automationProcessor)
+		log.Printf("AutomationProcessor initialized - automation endpoints enabled")
+	} else {
+		log.Printf("AutomationProcessor not initialized - automation endpoints disabled (requires Supabase and webhook secret)")
+	}
+
 	// Setup router
-	router := api.NewRouter(searchHandler, webhookController)
+	router := api.NewRouter(searchHandler, webhookController, automationController)
 
 	// Start server
 	log.Printf("Server starting on port %s", cfg.Port)

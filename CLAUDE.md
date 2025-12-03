@@ -428,3 +428,93 @@ The cold emails are saved to the existing `emails` table with the following stru
 - `from_email` (text) - Sender email (default: onboarding@resend.dev)
 - `reply_to` (text) - Reply-to email address
 - `to_email` (text) - Recipient email address
+
+## Automation System
+
+The automation system allows automatic enrichment of leads that are created outside of the search pipeline (e.g., CSV imports).
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     AUTOMATION TASKS                             │
+├─────────────────────────────────────────────────────────────────┤
+│  TASK TYPE           │ ACTION                                   │
+├──────────────────────┼──────────────────────────────────────────┤
+│  lead_enrichment     │ Scrape website + Extract data            │
+│  precall_generation  │ Generate pre-call report                 │
+│  email_generation    │ Generate cold email                      │
+│  full_enrichment     │ All of the above (complete pipeline)     │
+└──────────────────────┴──────────────────────────────────────────┘
+```
+
+### Webhook Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /webhooks/automation-task` | Process an automation task |
+| `POST /webhooks/lead-created` | Auto-enrich newly created leads |
+| `POST /webhooks/batch-enrichment` | Manual batch enrichment trigger |
+
+### Supabase Tables
+
+#### automation_configs
+User-specific automation settings:
+
+- `id` (uuid) - Primary key
+- `user_id` (uuid) - Foreign key to auth.users
+- `auto_enrich_new_leads` (boolean) - Auto-scrape on lead create
+- `auto_generate_precall` (boolean) - Auto-generate pre-call
+- `auto_generate_email` (boolean) - Auto-generate cold email
+- `default_business_profile_id` (uuid) - Default profile for automations
+- `daily_automation_limit` (int) - Max automations per day
+
+#### automation_tasks
+Task queue for processing:
+
+- `id` (uuid) - Primary key
+- `user_id` (uuid) - Foreign key to auth.users
+- `task_type` (text) - lead_enrichment, precall_generation, email_generation, full_enrichment
+- `lead_id` (uuid) - Single lead to process
+- `lead_ids` (uuid[]) - Batch of leads to process
+- `business_profile_id` (uuid) - Profile for personalization
+- `priority` (int) - 1=High, 2=Medium, 3=Low
+- `status` (text) - pending, processing, completed, failed
+- `items_total/processed/succeeded/failed` (int) - Progress tracking
+
+### Task Priority Levels
+
+| Priority | Value | Use Case |
+|----------|-------|----------|
+| High | 1 | Lead search jobs (real-time) |
+| Medium | 2 | Auto-triggered enrichment |
+| Low | 3 | Manual batch operations |
+
+### Rate Limiting
+
+- **Firecrawl**: Max 5 concurrent scrapes
+- **Retry attempts**: 2 (with 5s delay between retries)
+- **Daily limit**: Configurable per user (default 100)
+
+### Example: Batch Enrichment Request
+
+```json
+POST /webhooks/batch-enrichment
+Authorization: Bearer <webhook_secret>
+
+{
+  "user_id": "uuid",
+  "task_type": "full_enrichment",
+  "lead_ids": ["lead-uuid-1", "lead-uuid-2", "lead-uuid-3"],
+  "business_profile_id": "profile-uuid"
+}
+```
+
+### Auto-Enrichment Flow (CSV Upload)
+
+1. User uploads CSV → Leads created in Supabase
+2. Supabase trigger calls `/webhooks/lead-created`
+3. Worker checks `automation_configs` for user
+4. If enabled, creates and processes automation task
+5. Lead is enriched → Pre-call generated → Email generated
+6. User sees enriched lead in real-time via Supabase subscriptions
