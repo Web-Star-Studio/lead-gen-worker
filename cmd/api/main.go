@@ -99,8 +99,7 @@ func main() {
 			UseVertexAI: cfg.UseVertexAI,
 			GCPProject:  cfg.GCPProject,
 			GCPLocation: cfg.GCPLocation,
-			// Use flash model for faster extraction
-			Model: handlers.DefaultExtractorModel,
+			Model:       cfg.GeminiModel, // Uses GEMINI_MODEL env var, falls back to DefaultExtractorModel in handler
 		})
 		if err != nil {
 			log.Printf("Warning: Failed to initialize DataExtractorHandler: %v", err)
@@ -111,8 +110,12 @@ func main() {
 			if cfg.UseVertexAI {
 				backend = "Vertex AI"
 			}
+			model := cfg.GeminiModel
+			if model == "" {
+				model = handlers.DefaultExtractorModel
+			}
 			log.Printf("DataExtractorHandler initialized - data extraction enabled (backend: %s, model: %s)",
-				backend, handlers.DefaultExtractorModel)
+				backend, model)
 		}
 	} else {
 		log.Printf("GOOGLE_API_KEY or Vertex AI not configured - data extraction disabled")
@@ -155,7 +158,7 @@ func main() {
 		var err error
 		coldEmailHandler, err = handlers.NewColdEmailHandler(handlers.ColdEmailConfig{
 			APIKey:      cfg.GoogleAPIKey,
-			Model:       handlers.DefaultEmailModel, // Use flash model for faster generation
+			Model:       cfg.GeminiModel, // Uses GEMINI_MODEL env var, falls back to DefaultEmailModel in handler
 			UseVertexAI: cfg.UseVertexAI,
 			GCPProject:  cfg.GCPProject,
 			GCPLocation: cfg.GCPLocation,
@@ -169,8 +172,12 @@ func main() {
 			if cfg.UseVertexAI {
 				backend = "Vertex AI"
 			}
+			model := cfg.GeminiModel
+			if model == "" {
+				model = handlers.DefaultEmailModel
+			}
 			log.Printf("ColdEmailHandler initialized - cold email generation enabled (backend: %s, model: %s)",
-				backend, handlers.DefaultEmailModel)
+				backend, model)
 		}
 	} else {
 		log.Printf("GOOGLE_API_KEY or Vertex AI not configured - cold email generation disabled")

@@ -11,10 +11,14 @@ import (
 )
 
 const (
-	// DefaultScrapeTimeout is the timeout for scraping a single URL
-	DefaultScrapeTimeout = 30 * time.Second
+	// DefaultScrapeTimeout is the timeout for scraping a single URL (increased for JS-heavy sites)
+	DefaultScrapeTimeout = 45 * time.Second
 	// MaxConcurrentScrapes limits how many URLs we scrape in parallel
 	MaxConcurrentScrapes = 5
+	// DefaultWaitFor is the time to wait for JavaScript to load (ms)
+	DefaultWaitFor = 2000
+	// DefaultFirecrawlTimeout is the timeout sent to Firecrawl API (ms)
+	DefaultFirecrawlTimeout = 30000
 )
 
 // ScrapedPage represents the scraped content from a single URL
@@ -23,6 +27,8 @@ type ScrapedPage struct {
 	URL string `json:"url"`
 	// Markdown content extracted from the page
 	Markdown string `json:"markdown,omitempty"`
+	// Links found on the page (useful for finding contact pages, social media, etc.)
+	Links []string `json:"links,omitempty"`
 	// Error message if scraping failed
 	Error string `json:"error,omitempty"`
 	// Success indicates whether the scrape was successful
@@ -86,7 +92,20 @@ func (h *FirecrawlHandler) ScrapeURL(targetURL string) (*ScrapedPage, error) {
 
 	// Perform scrape in goroutine to support timeout
 	go func() {
-		scrapedData, err := h.app.ScrapeURL(targetURL, nil)
+		// Configure scrape parameters for robust lead generation scraping
+		onlyMainContent := false // Include header/footer for contact info (phone, email, address)
+		waitFor := DefaultWaitFor
+		timeout := DefaultFirecrawlTimeout
+		maxAge := 0 // Force fresh scrape - lead data should be current
+
+		scrapeParams := &firecrawl.ScrapeParams{
+			Formats:         []string{"markdown", "links"}, // Include links for better data extraction
+			OnlyMainContent: &onlyMainContent,
+			WaitFor:         &waitFor, // Wait for JavaScript to load (SPAs, React sites)
+			Timeout:         &timeout, // Firecrawl API timeout
+			MaxAge:          &maxAge,  // Always fetch fresh content, don't use cache
+		}
+		scrapedData, err := h.app.ScrapeURL(targetURL, scrapeParams)
 		resultChan <- scrapeResult{data: scrapedData, err: err}
 	}()
 
@@ -103,8 +122,10 @@ func (h *FirecrawlHandler) ScrapeURL(targetURL string) (*ScrapedPage, error) {
 			return result, nil
 		}
 		if res.data != nil {
-			log.Printf("[FirecrawlHandler] Successfully scraped %s (markdown length: %d)", targetURL, len(res.data.Markdown))
+			log.Printf("[FirecrawlHandler] Successfully scraped %s (markdown: %d chars, links: %d)",
+				targetURL, len(res.data.Markdown), len(res.data.Links))
 			result.Markdown = res.data.Markdown
+			result.Links = res.data.Links
 			result.Success = true
 		}
 	}
