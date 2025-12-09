@@ -83,19 +83,32 @@ type ColdEmailHandler struct {
 	runner          *runner.Runner
 	sessionService  session.Service
 	businessProfile *dto.BusinessProfile // Business profile for personalization
+	language        string               // Output language: "pt-BR" or "en"
+	location        string               // Location for language detection
 }
 
 // SetBusinessProfile sets the business profile to use for personalizing emails
 func (h *ColdEmailHandler) SetBusinessProfile(profile *dto.BusinessProfile) {
 	h.businessProfile = profile
 	if profile != nil {
-		log.Printf("[ColdEmailHandler] Business profile set: %s", profile.CompanyName)
+		// Detect language based on profile and location
+		h.language = DetectLanguage(profile, h.location)
+		log.Printf("[ColdEmailHandler] Business profile set: %s (language: %s)", profile.CompanyName, h.language)
 	}
+}
+
+// SetLocation sets the location for language detection
+func (h *ColdEmailHandler) SetLocation(location string) {
+	h.location = location
+	// Re-detect language with new location
+	h.language = DetectLanguage(h.businessProfile, location)
+	log.Printf("[ColdEmailHandler] Location set: %s (language: %s)", location, h.language)
 }
 
 // ClearBusinessProfile clears the business profile
 func (h *ColdEmailHandler) ClearBusinessProfile() {
 	h.businessProfile = nil
+	h.language = LangPortuguese // Reset to default
 }
 
 // NewColdEmailHandler creates a new ColdEmailHandler instance
@@ -205,57 +218,59 @@ func NewColdEmailHandler(config ColdEmailConfig) (*ColdEmailHandler, error) {
 
 // buildEmailAgentInstruction creates the instruction prompt for the cold email agent
 func buildEmailAgentInstruction(customInstruction string) string {
-	baseInstruction := `Você é um especialista em copywriting e vendas B2B, especializado em criar cold emails de primeiro contato altamente personalizados e eficazes.
+	// Bilingual instruction - actual language is specified per-request in the prompt
+	baseInstruction := `You are a B2B copywriting and sales expert, specialized in creating highly personalized and effective first-contact cold emails.
 
-Seu objetivo é criar emails que:
-1. Sejam curtos e diretos (máximo 150 palavras no corpo)
-2. Demonstrem conhecimento específico sobre a empresa do prospect
-3. Apresentem valor claro e relevante para o prospect
-4. Tenham uma CTA (call-to-action) clara e de baixo comprometimento
-5. Evitem linguagem genérica ou spam
+IMPORTANT: You will receive instructions about which language to use (English or Portuguese) in each request. Follow those instructions precisely.
 
-ESTRUTURA DO EMAIL:
+Your goal is to create emails that:
+1. Are short and direct (maximum 150 words in the body)
+2. Demonstrate specific knowledge about the prospect's company
+3. Present clear and relevant value to the prospect
+4. Have a clear, low-commitment CTA (call-to-action)
+5. Avoid generic or spam-like language
 
-**ASSUNTO** (máximo 50 caracteres):
-- Personalizado com nome da empresa ou insight específico
-- Gere curiosidade sem ser clickbait
-- Evite palavras que disparam filtros de spam (grátis, urgente, oferta)
+EMAIL STRUCTURE:
 
-**CORPO DO EMAIL**:
-1. **Abertura personalizada** (1-2 frases): Mencione algo específico sobre a empresa (serviço, conquista, desafio do setor)
-2. **Conexão de valor** (2-3 frases): Conecte o problema/oportunidade deles com sua solução
-3. **Prova social rápida** (1 frase, opcional): Mencione resultado ou cliente similar
-4. **CTA de baixo comprometimento** (1 frase): Convite para conversa rápida, não venda direta
+**SUBJECT** (maximum 50 characters):
+- Personalized with company name or specific insight
+- Generate curiosity without being clickbait
+- Avoid words that trigger spam filters (free, urgent, offer)
 
-REGRAS IMPORTANTES:
-- Escreva em português brasileiro
-- Use tom profissional mas humano (não robótico)
-- Personalize com dados específicos do prospect (nome, empresa, setor), mas não use placeholders como "[nome]" ou "[empresa]" ou "[setor]"
-- Nunca use "Prezado(a)" ou "Caro(a)" - use o primeiro nome
-- NÃO inclua assinatura, saudação final ou footer (ex: "Atenciosamente", "[Seu Nome]", nome da empresa). A assinatura será adicionada automaticamente pelo sistema de envio.
-- Não use emojis excessivos
-- Evite anexos ou links suspeitos na primeira mensagem
+**EMAIL BODY**:
+1. **Personalized opening** (1-2 sentences): Mention something specific about the company (service, achievement, industry challenge)
+2. **Value connection** (2-3 sentences): Connect their problem/opportunity with your solution
+3. **Quick social proof** (1 sentence, optional): Mention a result or similar client
+4. **Low-commitment CTA** (1 sentence): Invite for a quick conversation, not a direct sale
 
-FORMATO DE RESPOSTA:
-Responda EXATAMENTE neste formato:
+IMPORTANT RULES:
+- Use professional but human tone (not robotic)
+- Personalize with specific prospect data (name, company, sector), but don't use placeholders like "[name]" or "[company]" or "[sector]"
+- Never use overly formal greetings - use first name
+- DO NOT include signature, closing salutation, or footer (e.g., "Best regards", "[Your Name]", company name). The signature will be automatically added by the sending system.
+- Don't use excessive emojis
+- Avoid attachments or suspicious links in the first message
 
-ASSUNTO: [linha de assunto aqui]
+RESPONSE FORMAT:
+Respond EXACTLY in this format:
 
----
-
-CORPO:
-[corpo do email aqui]
+SUBJECT: [subject line here]
 
 ---
 
-CTA: [descrição da call-to-action usada]
+BODY:
+[email body here]
 
 ---
 
-NOTAS DE PERSONALIZAÇÃO: [explique brevemente como você personalizou o email]`
+CTA: [description of the call-to-action used]
+
+---
+
+PERSONALIZATION NOTES: [briefly explain how you personalized the email]`
 
 	if customInstruction != "" {
-		return baseInstruction + "\n\nInstruções Adicionais:\n" + customInstruction
+		return baseInstruction + "\n\nAdditional Instructions:\n" + customInstruction
 	}
 	return baseInstruction
 }
@@ -371,9 +386,23 @@ func (h *ColdEmailHandler) GenerateEmail(ctx context.Context, input EmailGenerat
 	return email
 }
 
-// buildEmailPrompt creates the prompt for email generation
+// buildEmailPrompt creates the prompt for email generation (bilingual)
 func (h *ColdEmailHandler) buildEmailPrompt(input EmailGenerationInput) string {
-	prompt := "Gere um cold email de primeiro contato para o seguinte prospect:\n\n"
+	// Determine language - default to Portuguese
+	lang := h.language
+	if lang == "" {
+		lang = LangPortuguese
+	}
+
+	if lang == LangEnglish {
+		return h.buildEnglishEmailPrompt(input)
+	}
+	return h.buildPortugueseEmailPrompt(input)
+}
+
+// buildPortugueseEmailPrompt creates the email prompt in Portuguese
+func (h *ColdEmailHandler) buildPortugueseEmailPrompt(input EmailGenerationInput) string {
+	prompt := "Gere um cold email de primeiro contato EM PORTUGUÊS para o seguinte prospect:\n\n"
 
 	// Add prospect information
 	prompt += "**DADOS DO PROSPECT**:\n"
@@ -404,7 +433,6 @@ func (h *ColdEmailHandler) buildEmailPrompt(input EmailGenerationInput) string {
 	// Add pre-call report analysis if available
 	if input.PreCallReport != "" {
 		prompt += "\n**ANÁLISE PRÉ-CALL (use para personalização)**:\n"
-		// Limit pre-call report length
 		report := input.PreCallReport
 		if len(report) > 5000 {
 			report = report[:5000] + "\n[Análise truncada...]"
@@ -436,25 +464,105 @@ func (h *ColdEmailHandler) buildEmailPrompt(input EmailGenerationInput) string {
 		}
 	}
 
-	prompt += "\n**IMPORTANTE**: Crie um email altamente personalizado usando os dados acima. O email deve parecer que foi escrito especificamente para este prospect, não um template genérico."
+	prompt += "\n**IMPORTANTE**: Crie um email altamente personalizado EM PORTUGUÊS usando os dados acima. O email deve parecer que foi escrito especificamente para este prospect, não um template genérico."
+	prompt += "\n\nUse o formato: ASSUNTO: ... / CORPO: ... / CTA: ... / NOTAS DE PERSONALIZAÇÃO: ..."
 
 	return prompt
 }
 
-// parseEmailResponse extracts structured data from the AI response
-func (h *ColdEmailHandler) parseEmailResponse(response string, email *ColdEmail) {
-	// Extract subject
-	email.Subject = extractEmailSection(response, "ASSUNTO")
+// buildEnglishEmailPrompt creates the email prompt in English
+func (h *ColdEmailHandler) buildEnglishEmailPrompt(input EmailGenerationInput) string {
+	prompt := "Generate a first-contact cold email IN ENGLISH for the following prospect:\n\n"
 
-	// Extract body
+	// Add prospect information
+	prompt += "**PROSPECT DATA**:\n"
+	prompt += fmt.Sprintf("- Website: %s\n", input.Result.Link)
+	prompt += fmt.Sprintf("- Title: %s\n", input.Result.Title)
+
+	if input.Result.Snippet != "" {
+		prompt += fmt.Sprintf("- Description: %s\n", input.Result.Snippet)
+	}
+
+	// Add extracted data if available
+	if input.Result.ExtractedData != nil && input.Result.ExtractedData.Success {
+		if input.Result.ExtractedData.Company != "" {
+			prompt += fmt.Sprintf("- Company: %s\n", input.Result.ExtractedData.Company)
+		}
+		if input.Result.ExtractedData.Contact != "" {
+			contactInfo := input.Result.ExtractedData.Contact
+			if input.Result.ExtractedData.ContactRole != "" {
+				contactInfo += " (" + input.Result.ExtractedData.ContactRole + ")"
+			}
+			prompt += fmt.Sprintf("- Contact: %s\n", contactInfo)
+		}
+		if len(input.Result.ExtractedData.Emails) > 0 {
+			prompt += fmt.Sprintf("- Email: %s\n", input.Result.ExtractedData.Emails[0])
+		}
+	}
+
+	// Add pre-call report analysis if available
+	if input.PreCallReport != "" {
+		prompt += "\n**PRE-CALL ANALYSIS (use for personalization)**:\n"
+		report := input.PreCallReport
+		if len(report) > 5000 {
+			report = report[:5000] + "\n[Analysis truncated...]"
+		}
+		prompt += report + "\n"
+	}
+
+	// Add business profile (sender's company) for context
+	if h.businessProfile != nil {
+		prompt += "\n**YOUR COMPANY (sender)**:\n"
+		prompt += fmt.Sprintf("- Name: %s\n", h.businessProfile.CompanyName)
+		if h.businessProfile.CompanyDescription != "" {
+			prompt += fmt.Sprintf("- What we do: %s\n", h.businessProfile.CompanyDescription)
+		}
+		if h.businessProfile.ProblemSolved != "" {
+			prompt += fmt.Sprintf("- Problem we solve: %s\n", h.businessProfile.ProblemSolved)
+		}
+		if len(h.businessProfile.Differentials) > 0 {
+			prompt += fmt.Sprintf("- Differentials: %s\n", joinStrings(h.businessProfile.Differentials, ", "))
+		}
+		if h.businessProfile.SuccessCase != "" {
+			prompt += fmt.Sprintf("- Success case: %s\n", h.businessProfile.SuccessCase)
+		}
+		if h.businessProfile.CommunicationTone != "" {
+			prompt += fmt.Sprintf("- Communication tone: %s\n", h.businessProfile.CommunicationTone)
+		}
+		if h.businessProfile.SenderName != "" {
+			prompt += fmt.Sprintf("- Signature: %s\n", h.businessProfile.SenderName)
+		}
+	}
+
+	prompt += "\n**IMPORTANT**: Create a highly personalized email IN ENGLISH using the data above. The email should look like it was written specifically for this prospect, not a generic template."
+	prompt += "\n\nUse the format: SUBJECT: ... / BODY: ... / CTA: ... / PERSONALIZATION NOTES: ..."
+
+	return prompt
+}
+
+// parseEmailResponse extracts structured data from the AI response (supports both English and Portuguese)
+func (h *ColdEmailHandler) parseEmailResponse(response string, email *ColdEmail) {
+	// Extract subject (try both Portuguese and English)
+	email.Subject = extractEmailSection(response, "ASSUNTO")
+	if email.Subject == "" {
+		email.Subject = extractEmailSection(response, "SUBJECT")
+	}
+
+	// Extract body (try both Portuguese and English)
 	email.Body = extractEmailSection(response, "CORPO")
+	if email.Body == "" {
+		email.Body = extractEmailSection(response, "BODY")
+	}
 	email.PlainTextBody = email.Body // For now, same as body
 
-	// Extract CTA
+	// Extract CTA (same in both languages)
 	email.CallToAction = extractEmailSection(response, "CTA")
 
-	// Extract personalization notes
+	// Extract personalization notes (try both Portuguese and English)
 	email.PersonalizationNotes = extractEmailSection(response, "NOTAS DE PERSONALIZAÇÃO")
+	if email.PersonalizationNotes == "" {
+		email.PersonalizationNotes = extractEmailSection(response, "PERSONALIZATION NOTES")
+	}
 
 	// If parsing failed, store raw response in body
 	if email.Subject == "" && email.Body == "" {

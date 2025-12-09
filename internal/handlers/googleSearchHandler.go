@@ -180,6 +180,16 @@ func (h *GoogleSearchHandler) ClearBusinessProfile() {
 	}
 }
 
+// SetLocation sets the location on AI handlers for language detection
+func (h *GoogleSearchHandler) SetLocation(location string) {
+	if h.preCallReportHandler != nil {
+		h.preCallReportHandler.SetLocation(location)
+	}
+	if h.coldEmailHandler != nil {
+		h.coldEmailHandler.SetLocation(location)
+	}
+}
+
 // getCanonicalLocation fetches the canonical location name from SerpAPI
 func (h *GoogleSearchHandler) getCanonicalLocation(location string) (string, error) {
 	// URL encode the location parameter

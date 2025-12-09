@@ -37,7 +37,12 @@ func (p *JobProcessor) ProcessJob(ctx context.Context, job *dto.Job) {
 		return
 	}
 
-	// 2. Fetch Business Profile if business_profile is provided
+	// 2. Set location for language detection (must be set before business profile for proper detection)
+	if job.Region != "" {
+		p.searchHandler.SetLocation(job.Region)
+	}
+
+	// 3. Fetch Business Profile if business_profile is provided
 	var businessProfile *dto.BusinessProfile
 	if job.BusinessProfileID != nil && *job.BusinessProfileID != "" {
 		var err error

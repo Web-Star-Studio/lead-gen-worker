@@ -88,19 +88,32 @@ type PreCallReportHandler struct {
 	runner          *runner.Runner
 	sessionService  session.Service
 	businessProfile *dto.BusinessProfile // Business profile for personalization
+	language        string               // Output language: "pt-BR" or "en"
+	location        string               // Location for language detection
 }
 
 // SetBusinessProfile sets the business profile to use for personalizing reports
 func (h *PreCallReportHandler) SetBusinessProfile(profile *dto.BusinessProfile) {
 	h.businessProfile = profile
 	if profile != nil {
-		log.Printf("[PreCallReportHandler] Business profile set: %s", profile.CompanyName)
+		// Detect language based on profile and location
+		h.language = DetectLanguage(profile, h.location)
+		log.Printf("[PreCallReportHandler] Business profile set: %s (language: %s)", profile.CompanyName, h.language)
 	}
+}
+
+// SetLocation sets the location for language detection
+func (h *PreCallReportHandler) SetLocation(location string) {
+	h.location = location
+	// Re-detect language with new location
+	h.language = DetectLanguage(h.businessProfile, location)
+	log.Printf("[PreCallReportHandler] Location set: %s (language: %s)", location, h.language)
 }
 
 // ClearBusinessProfile clears the business profile
 func (h *PreCallReportHandler) ClearBusinessProfile() {
 	h.businessProfile = nil
+	h.language = LangPortuguese // Reset to default
 }
 
 // NewPreCallReportHandler creates a new PreCallReportHandler instance
@@ -211,34 +224,35 @@ func NewPreCallReportHandler(config PreCallReportConfig) (*PreCallReportHandler,
 	}, nil
 }
 
-// buildAgentInstruction creates the instruction prompt for the agent
+// buildAgentInstruction creates the instruction prompt for the agent (bilingual support)
 func buildAgentInstruction(customInstruction string) string {
-	baseInstruction := `Você é um analista especialista em inteligência de vendas, especializado em gerar relatórios pré-call completos para equipes de vendas B2B.
+	// Default Portuguese instruction - will be overridden per-request based on language
+	baseInstruction := `You are a multilingual sales intelligence analyst specialized in generating comprehensive pre-call reports for B2B sales teams.
 
-Sua tarefa é analisar o conteúdo do site ou dados da empresa e gerar um relatório pré-call detalhado que ajude os representantes de vendas a se prepararem para seu contato.
+Your task is to analyze company website content or data and generate a detailed pre-call report that helps sales representatives prepare for their outreach.
 
-IMPORTANTE: Sempre responda em PORTUGUÊS BRASILEIRO.
+IMPORTANT: You will receive instructions about which language to use (English or Portuguese) in each request. Follow those instructions precisely.
 
-Ao analisar uma empresa, você deve extrair e fornecer:
+When analyzing a company, you must extract and provide:
 
-1. **Nome da Empresa**: O nome oficial do negócio
-2. **Setor/Indústria**: O setor ou indústria em que a empresa atua
-3. **Resumo da Empresa**: Uma visão geral de 2-3 frases sobre o que a empresa faz
-4. **Serviços Principais**: Liste 3-5 principais serviços ou produtos oferecidos
-5. **Público-Alvo**: Quem são seus principais clientes
-6. **Pontos de Dor Potenciais**: 3-5 desafios que esse tipo de negócio tipicamente enfrenta que nossas soluções poderiam resolver
-7. **Pontos de Conversa**: 3-5 iniciadores de conversa específicos baseados no negócio deles
-8. **Vantagens Competitivas**: O que faz essa empresa se destacar
-9. **Informações de Contato**: Quaisquer detalhes de contato encontrados (telefone, email, endereço)
-10. **Abordagem Recomendada**: Como um representante de vendas deve abordar este lead
+1. **Company Name**: The official business name
+2. **Industry/Sector**: The industry or sector the company operates in
+3. **Company Summary**: A 2-3 sentence overview of what the company does
+4. **Key Services**: List 3-5 main services or products offered
+5. **Target Audience**: Who are their main customers
+6. **Potential Pain Points**: 3-5 challenges this type of business typically faces that our solutions could address
+7. **Talking Points**: 3-5 specific conversation starters based on their business
+8. **Competitive Advantages**: What makes this company stand out
+9. **Contact Information**: Any contact details found (phone, email, address)
+10. **Recommended Approach**: How a sales rep should approach this lead
 
-Formate sua resposta como um relatório estruturado com seções claras. Seja específico e acionável.
-Se certas informações não estiverem disponíveis no conteúdo fornecido, faça inferências razoáveis com base no tipo de empresa e indústria, mas indique quando estiver inferindo.
+Format your response as a structured report with clear sections. Be specific and actionable.
+If certain information is not available from the provided content, make reasonable inferences based on the company type and industry, but indicate when you are inferring.
 
-Sempre mantenha um tom profissional e útil, focado em possibilitar conversas de vendas eficazes.`
+Always maintain a professional and helpful tone, focused on enabling effective sales conversations.`
 
 	if customInstruction != "" {
-		return baseInstruction + "\n\nInstruções Adicionais:\n" + customInstruction
+		return baseInstruction + "\n\nAdditional Instructions:\n" + customInstruction
 	}
 	return baseInstruction
 }
@@ -335,8 +349,26 @@ func (h *PreCallReportHandler) GenerateReport(ctx context.Context, result Organi
 	return report
 }
 
-// buildPrompt creates the prompt for report generation
+// buildPrompt creates the prompt for report generation (bilingual)
 func (h *PreCallReportHandler) buildPrompt(result OrganicResult) string {
+	// Determine language - default to Portuguese
+	lang := h.language
+	if lang == "" {
+		lang = LangPortuguese
+	}
+
+	var prompt string
+	if lang == LangEnglish {
+		prompt = h.buildEnglishPrompt(result)
+	} else {
+		prompt = h.buildPortuguesePrompt(result)
+	}
+
+	return prompt
+}
+
+// buildPortuguesePrompt creates the prompt in Portuguese
+func (h *PreCallReportHandler) buildPortuguesePrompt(result OrganicResult) string {
 	prompt := fmt.Sprintf(`Gere um relatório pré-call completo e detalhado em PORTUGUÊS para a seguinte empresa:
 
 **Website**: %s
@@ -400,7 +432,6 @@ func (h *PreCallReportHandler) buildPrompt(result OrganicResult) string {
 	}
 
 	if result.ScrapedContent != "" {
-		// Limit content length to avoid token limits
 		content := result.ScrapedContent
 		if len(content) > 15000 {
 			content = content[:15000] + "\n\n[Conteúdo truncado...]"
@@ -432,6 +463,106 @@ O relatório deve incluir:
 - Pontos de conversa sugeridos
 - Vantagens competitivas identificadas
 - Abordagem recomendada para a ligação`
+
+	return prompt
+}
+
+// buildEnglishPrompt creates the prompt in English
+func (h *PreCallReportHandler) buildEnglishPrompt(result OrganicResult) string {
+	prompt := fmt.Sprintf(`Generate a comprehensive and detailed pre-call report in ENGLISH for the following company:
+
+**Website**: %s
+**Name**: %s
+**Description**: %s
+`, result.Link, result.Title, result.Snippet)
+
+	// Include business profile context for personalization
+	if h.businessProfile != nil {
+		prompt += "\n---\n**YOUR COMPANY CONTEXT** (Use to personalize the report):\n"
+		prompt += fmt.Sprintf("- Your Company: %s\n", h.businessProfile.CompanyName)
+		if h.businessProfile.CompanyDescription != "" {
+			prompt += fmt.Sprintf("- What You Do: %s\n", h.businessProfile.CompanyDescription)
+		}
+		if h.businessProfile.ProblemSolved != "" {
+			prompt += fmt.Sprintf("- Problem You Solve: %s\n", h.businessProfile.ProblemSolved)
+		}
+		if len(h.businessProfile.Differentials) > 0 {
+			prompt += fmt.Sprintf("- Your Differentials: %s\n", joinStrings(h.businessProfile.Differentials, ", "))
+		}
+		if h.businessProfile.SuccessCase != "" {
+			prompt += fmt.Sprintf("- Success Case: %s\n", h.businessProfile.SuccessCase)
+		}
+		if h.businessProfile.CommunicationTone != "" {
+			prompt += fmt.Sprintf("- Communication Tone: %s\n", h.businessProfile.CommunicationTone)
+		}
+		if h.businessProfile.SenderName != "" {
+			prompt += fmt.Sprintf("- Sales Rep Name: %s\n", h.businessProfile.SenderName)
+		}
+		prompt += "\n**IMPORTANT**: Adapt the pain points, talking points, and recommended approach specifically for how YOUR services can help THIS lead. Be specific about how your solution addresses their potential needs.\n---\n"
+	}
+
+	// Include extracted data if available
+	if result.ExtractedData != nil && result.ExtractedData.Success {
+		prompt += "\n**Extracted Company Data**:\n"
+		if result.ExtractedData.Company != "" {
+			prompt += fmt.Sprintf("- Company Name: %s\n", result.ExtractedData.Company)
+		}
+		if result.ExtractedData.Contact != "" {
+			contactInfo := result.ExtractedData.Contact
+			if result.ExtractedData.ContactRole != "" {
+				contactInfo += " (" + result.ExtractedData.ContactRole + ")"
+			}
+			prompt += fmt.Sprintf("- Contact: %s\n", contactInfo)
+		}
+		if len(result.ExtractedData.Emails) > 0 {
+			prompt += fmt.Sprintf("- Emails: %s\n", joinStrings(result.ExtractedData.Emails, ", "))
+		}
+		if len(result.ExtractedData.Phones) > 0 {
+			prompt += fmt.Sprintf("- Phones: %s\n", joinStrings(result.ExtractedData.Phones, ", "))
+		}
+		if result.ExtractedData.Address != "" {
+			prompt += fmt.Sprintf("- Address: %s\n", result.ExtractedData.Address)
+		}
+		if len(result.ExtractedData.SocialMedia) > 0 {
+			prompt += "- Social Media:\n"
+			for platform, url := range result.ExtractedData.SocialMedia {
+				prompt += fmt.Sprintf("  - %s: %s\n", platform, url)
+			}
+		}
+	}
+
+	if result.ScrapedContent != "" {
+		content := result.ScrapedContent
+		if len(content) > 15000 {
+			content = content[:15000] + "\n\n[Content truncated...]"
+		}
+		prompt += fmt.Sprintf(`
+**Website Content / Company Data**:
+%s
+`, content)
+	}
+
+	if result.Rating > 0 {
+		prompt += fmt.Sprintf("\n**Rating**: %.1f", result.Rating)
+	}
+	if result.Reviews > 0 {
+		prompt += fmt.Sprintf("\n**Number of Reviews**: %d", result.Reviews)
+	}
+
+	prompt += `
+
+Analyze this information and generate a detailed pre-call report IN ENGLISH with all required sections.
+Use the extracted company data (if available) to enrich your report with accurate contact information.
+
+The report should include:
+- Company summary
+- Industry/Sector
+- Main services/products
+- Target audience
+- Potential pain points
+- Suggested talking points
+- Identified competitive advantages
+- Recommended approach for the call`
 
 	return prompt
 }

@@ -34,6 +34,7 @@ type BusinessProfile struct {
 	SuccessCase        string   `json:"success_case,omitempty"`
 	CommunicationTone  string   `json:"communication_tone,omitempty"`
 	SenderName         string   `json:"sender_name,omitempty"`
+	Language           string   `json:"language,omitempty"` // "pt-BR" or "en" - auto-detected if not set
 }
 
 // ICP represents an Ideal Customer Profile record from the icps table
