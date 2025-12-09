@@ -63,20 +63,48 @@ func (h *FirecrawlHandler) SetTimeout(timeout time.Duration) {
 	h.timeout = timeout
 }
 
+// normalizeToRootURL extracts the root URL (scheme + host) from any URL
+// e.g., "https://example.com/support/contact" -> "https://example.com"
+func normalizeToRootURL(targetURL string) (string, error) {
+	parsedURL, err := url.Parse(targetURL)
+	if err != nil {
+		return "", err
+	}
+	if parsedURL.Host == "" {
+		return "", nil
+	}
+	// Reconstruct URL with only scheme and host (root domain)
+	rootURL := &url.URL{
+		Scheme: parsedURL.Scheme,
+		Host:   parsedURL.Host,
+	}
+	return rootURL.String(), nil
+}
+
 // ScrapeURL scrapes a single URL and returns its markdown content
+// Note: URLs are normalized to root domain (e.g., https://example.com/page -> https://example.com)
 func (h *FirecrawlHandler) ScrapeURL(targetURL string) (*ScrapedPage, error) {
 	log.Printf("[FirecrawlHandler] ScrapeURL called for: %s", targetURL)
-	result := &ScrapedPage{
-		URL:     targetURL,
-		Success: false,
+
+	// Normalize URL to root domain
+	normalizedURL, err := normalizeToRootURL(targetURL)
+	if err != nil || normalizedURL == "" {
+		log.Printf("[FirecrawlHandler] Invalid URL: %s", targetURL)
+		return &ScrapedPage{
+			URL:     targetURL,
+			Error:   "invalid URL",
+			Success: false,
+		}, nil
 	}
 
-	// Validate URL
-	parsedURL, err := url.Parse(targetURL)
-	if err != nil || parsedURL.Host == "" {
-		log.Printf("[FirecrawlHandler] Invalid URL: %s", targetURL)
-		result.Error = "invalid URL"
-		return result, nil
+	// Log if URL was normalized
+	if normalizedURL != targetURL {
+		log.Printf("[FirecrawlHandler] URL normalized: %s -> %s", targetURL, normalizedURL)
+	}
+
+	result := &ScrapedPage{
+		URL:     normalizedURL, // Store the normalized URL
+		Success: false,
 	}
 
 	// Create a context with timeout
@@ -105,25 +133,25 @@ func (h *FirecrawlHandler) ScrapeURL(targetURL string) (*ScrapedPage, error) {
 			Timeout:         &timeout, // Firecrawl API timeout
 			MaxAge:          &maxAge,  // Always fetch fresh content, don't use cache
 		}
-		scrapedData, err := h.app.ScrapeURL(targetURL, scrapeParams)
+		scrapedData, err := h.app.ScrapeURL(normalizedURL, scrapeParams)
 		resultChan <- scrapeResult{data: scrapedData, err: err}
 	}()
 
 	// Wait for result or timeout
 	select {
 	case <-ctx.Done():
-		log.Printf("[FirecrawlHandler] Timeout exceeded for: %s", targetURL)
+		log.Printf("[FirecrawlHandler] Timeout exceeded for: %s", normalizedURL)
 		result.Error = "scrape timeout exceeded"
 		return result, nil
 	case res := <-resultChan:
 		if res.err != nil {
-			log.Printf("[FirecrawlHandler] Scrape error for %s: %v", targetURL, res.err)
+			log.Printf("[FirecrawlHandler] Scrape error for %s: %v", normalizedURL, res.err)
 			result.Error = res.err.Error()
 			return result, nil
 		}
 		if res.data != nil {
 			log.Printf("[FirecrawlHandler] Successfully scraped %s (markdown: %d chars, links: %d)",
-				targetURL, len(res.data.Markdown), len(res.data.Links))
+				normalizedURL, len(res.data.Markdown), len(res.data.Links))
 			result.Markdown = res.data.Markdown
 			result.Links = res.data.Links
 			result.Success = true
