@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,6 +26,8 @@ const (
 	MaxConcurrentEmails = 3
 	// DefaultEmailModel is the default Gemini model to use for email generation
 	DefaultEmailModel = "gemini-2.5-flash"
+	// DefaultFallbackModel is the fallback model when primary model quota is exceeded
+	DefaultFallbackModel = "gemini-2.5-pro"
 )
 
 // ColdEmail represents the generated cold email for a lead
@@ -62,6 +65,8 @@ type ColdEmailConfig struct {
 	APIKey string
 	// Model is the Gemini model to use (default: gemini-2.5-flash for speed)
 	Model string
+	// FallbackModel is used when primary model quota is exceeded (default: gemini-2.5-pro)
+	FallbackModel string
 	// Timeout for generating each email
 	Timeout time.Duration
 	// MaxConcurrent limits parallel email generation
@@ -85,6 +90,10 @@ type ColdEmailHandler struct {
 	businessProfile *dto.BusinessProfile // Business profile for personalization
 	language        string               // Output language: "pt-BR" or "en"
 	location        string               // Location for language detection
+	// Fallback resources
+	fallbackAgent  agent.Agent
+	fallbackRunner *runner.Runner
+	clientConfig   *genai.ClientConfig // Store for creating fallback
 }
 
 // SetBusinessProfile sets the business profile to use for personalizing emails
@@ -144,6 +153,9 @@ func NewColdEmailHandler(config ColdEmailConfig) (*ColdEmailHandler, error) {
 
 	if config.Model == "" {
 		config.Model = DefaultEmailModel
+	}
+	if config.FallbackModel == "" {
+		config.FallbackModel = DefaultFallbackModel
 	}
 	if config.Timeout == 0 {
 		config.Timeout = DefaultEmailTimeout
@@ -206,14 +218,68 @@ func NewColdEmailHandler(config ColdEmailConfig) (*ColdEmailHandler, error) {
 		return nil, fmt.Errorf("failed to create runner: %w", err)
 	}
 
-	log.Printf("[ColdEmailHandler] Successfully initialized with model: %s", config.Model)
+	log.Printf("[ColdEmailHandler] Successfully initialized with model: %s (fallback: %s)", config.Model, config.FallbackModel)
 
 	return &ColdEmailHandler{
 		config:         config,
 		agent:          emailAgent,
 		runner:         r,
 		sessionService: sessionService,
+		clientConfig:   clientConfig,
 	}, nil
+}
+
+// initFallbackAgent initializes the fallback agent lazily when needed
+func (h *ColdEmailHandler) initFallbackAgent() error {
+	if h.fallbackRunner != nil {
+		return nil // Already initialized
+	}
+
+	log.Printf("[ColdEmailHandler] Initializing fallback model: %s", h.config.FallbackModel)
+
+	ctx := context.Background()
+
+	// Create fallback model
+	fallbackModel, err := gemini.NewModel(ctx, h.config.FallbackModel, h.clientConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create fallback model: %w", err)
+	}
+
+	// Build instruction for the agent
+	instruction := buildEmailAgentInstruction(h.config.CustomInstruction)
+
+	// Create fallback agent
+	h.fallbackAgent, err = llmagent.New(llmagent.Config{
+		Name:        "cold_email_agent_fallback",
+		Model:       fallbackModel,
+		Description: "AI agent that generates personalized B2B cold emails for first contact with sales leads (fallback).",
+		Instruction: instruction,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create fallback agent: %w", err)
+	}
+
+	// Create fallback runner
+	h.fallbackRunner, err = runner.New(runner.Config{
+		AppName:        "cold_email_generator_fallback",
+		Agent:          h.fallbackAgent,
+		SessionService: h.sessionService,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create fallback runner: %w", err)
+	}
+
+	log.Printf("[ColdEmailHandler] Fallback model initialized successfully: %s", h.config.FallbackModel)
+	return nil
+}
+
+// isQuotaExceededError checks if the error is a quota exceeded (429) error
+func isQuotaExceededError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "429") || strings.Contains(errStr, "RESOURCE_EXHAUSTED") || strings.Contains(errStr, "quota")
 }
 
 // buildEmailAgentInstruction creates the instruction prompt for the cold email agent
@@ -237,11 +303,15 @@ EMAIL STRUCTURE:
 - Generate curiosity without being clickbait
 - Avoid words that trigger spam filters (free, urgent, offer)
 
-**EMAIL BODY**:
-1. **Personalized opening** (1-2 sentences): Mention something specific about the company (service, achievement, industry challenge)
-2. **Value connection** (2-3 sentences): Connect their problem/opportunity with your solution
-3. **Quick social proof** (1 sentence, optional): Mention a result or similar client
-4. **Low-commitment CTA** (1 sentence): Invite for a quick conversation, not a direct sale
+**EMAIL BODY** (MUST have at least 2 paragraphs):
+1. **First paragraph - Greeting + Personalized opening** (2-3 sentences): 
+   - Start with a professional greeting that does NOT use the recipient's name directly or time-based greetings (avoid "Bom dia", "Good morning", "Olá João", etc.)
+   - Good examples: "Olá!", "Tudo bem?", "Hi there!", "Hope you're doing well!"
+   - Follow with something specific about the company (service, achievement, industry challenge)
+2. **Second paragraph - Value connection + CTA** (2-4 sentences): 
+   - Connect their problem/opportunity with your solution
+   - Optional: mention a quick result or similar client
+   - End with a low-commitment CTA: Invite for a quick conversation, not a direct sale
 
 IMPORTANT RULES:
 - Use professional but human tone (not robotic)
@@ -347,18 +417,18 @@ func (h *ColdEmailHandler) GenerateEmail(ctx context.Context, input EmailGenerat
 
 	// Run the agent
 	var responseText string
+	var generationErr error
 	runConfig := agent.RunConfig{
 		StreamingMode: agent.StreamingModeNone,
 	}
 
 	log.Printf("[ColdEmailHandler] Generating email for: %s (session: %s)", input.Result.Link, sessionID)
 
+	// Try with primary model
 	for event, err := range h.runner.Run(ctx, userID, sessionID, userMessage, runConfig) {
 		if err != nil {
-			log.Printf("[ColdEmailHandler] Error during generation for %s: %v", input.Result.Link, err)
-			email.Error = fmt.Sprintf("generation failed: %v", err)
-			email.Success = false
-			return email
+			generationErr = err
+			break
 		}
 
 		// Collect response text
@@ -369,6 +439,68 @@ func (h *ColdEmailHandler) GenerateEmail(ctx context.Context, input EmailGenerat
 				}
 			}
 		}
+	}
+
+	// If primary model failed with quota error, try fallback
+	if generationErr != nil && isQuotaExceededError(generationErr) {
+		log.Printf("[ColdEmailHandler] Quota exceeded for primary model, trying fallback: %s", h.config.FallbackModel)
+
+		// Initialize fallback agent if needed
+		if err := h.initFallbackAgent(); err != nil {
+			log.Printf("[ColdEmailHandler] Failed to initialize fallback agent: %v", err)
+			email.Error = fmt.Sprintf("generation failed (primary quota exceeded, fallback init failed): %v", err)
+			email.Success = false
+			return email
+		}
+
+		// Create a new session for fallback
+		fallbackResp, err := h.sessionService.Create(ctx, &session.CreateRequest{
+			AppName: "cold_email_generator_fallback",
+			UserID:  userID,
+		})
+		if err != nil {
+			log.Printf("[ColdEmailHandler] Failed to create fallback session: %v", err)
+			email.Error = fmt.Sprintf("generation failed (fallback session error): %v", err)
+			email.Success = false
+			return email
+		}
+		fallbackSessionID := fallbackResp.Session.ID()
+		defer func() {
+			_ = h.sessionService.Delete(ctx, &session.DeleteRequest{
+				AppName:   "cold_email_generator_fallback",
+				UserID:    userID,
+				SessionID: fallbackSessionID,
+			})
+		}()
+
+		// Reset for fallback attempt
+		responseText = ""
+		generationErr = nil
+
+		log.Printf("[ColdEmailHandler] Retrying with fallback model for: %s (session: %s)", input.Result.Link, fallbackSessionID)
+
+		for event, err := range h.fallbackRunner.Run(ctx, userID, fallbackSessionID, userMessage, runConfig) {
+			if err != nil {
+				generationErr = err
+				break
+			}
+
+			if event.Content != nil {
+				for _, part := range event.Content.Parts {
+					if part.Text != "" {
+						responseText += part.Text
+					}
+				}
+			}
+		}
+	}
+
+	// Handle final error
+	if generationErr != nil {
+		log.Printf("[ColdEmailHandler] Error during generation for %s: %v", input.Result.Link, generationErr)
+		email.Error = fmt.Sprintf("generation failed: %v", generationErr)
+		email.Success = false
+		return email
 	}
 
 	if responseText == "" {

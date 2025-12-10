@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,7 +25,9 @@ const (
 	// MaxConcurrentReports limits how many reports we generate in parallel
 	MaxConcurrentReports = 3
 	// DefaultGeminiModel is the default Gemini model to use
-	DefaultGeminiModel = "gemini-2.5-pro-preview-06-05"
+	DefaultGeminiModel = "gemini-2.5-flash"
+	// DefaultReportFallbackModel is the fallback model when primary model quota is exceeded
+	DefaultReportFallbackModel = "gemini-2.5-pro"
 )
 
 // PreCallReport represents the generated pre-call report for a lead
@@ -64,8 +67,10 @@ type PreCallReport struct {
 type PreCallReportConfig struct {
 	// APIKey is the Google API key for Gemini (used with Google AI Studio backend)
 	APIKey string
-	// Model is the Gemini model to use (default: gemini-2.5-pro-preview-06-05)
+	// Model is the Gemini model to use (default: gemini-2.5-flash)
 	Model string
+	// FallbackModel is used when primary model quota is exceeded (default: gemini-2.5-pro)
+	FallbackModel string
 	// Timeout for generating each report
 	Timeout time.Duration
 	// MaxConcurrent limits parallel report generation
@@ -90,6 +95,10 @@ type PreCallReportHandler struct {
 	businessProfile *dto.BusinessProfile // Business profile for personalization
 	language        string               // Output language: "pt-BR" or "en"
 	location        string               // Location for language detection
+	// Fallback resources
+	fallbackAgent  agent.Agent
+	fallbackRunner *runner.Runner
+	clientConfig   *genai.ClientConfig
 }
 
 // SetBusinessProfile sets the business profile to use for personalizing reports
@@ -149,6 +158,9 @@ func NewPreCallReportHandler(config PreCallReportConfig) (*PreCallReportHandler,
 
 	if config.Model == "" {
 		config.Model = DefaultGeminiModel
+	}
+	if config.FallbackModel == "" {
+		config.FallbackModel = DefaultReportFallbackModel
 	}
 	if config.Timeout == 0 {
 		config.Timeout = DefaultReportTimeout
@@ -211,7 +223,7 @@ func NewPreCallReportHandler(config PreCallReportConfig) (*PreCallReportHandler,
 		return nil, fmt.Errorf("failed to create runner: %w", err)
 	}
 
-	log.Printf("[PreCallReportHandler] Successfully initialized with model: %s", config.Model)
+	log.Printf("[PreCallReportHandler] Successfully initialized with model: %s (fallback: %s)", config.Model, config.FallbackModel)
 
 	// Note: model is stored internally by the agent, we don't need to keep a reference
 	_ = model
@@ -221,7 +233,61 @@ func NewPreCallReportHandler(config PreCallReportConfig) (*PreCallReportHandler,
 		agent:          reportAgent,
 		runner:         r,
 		sessionService: sessionService,
+		clientConfig:   clientConfig,
 	}, nil
+}
+
+// initFallbackAgent initializes the fallback agent lazily when needed
+func (h *PreCallReportHandler) initFallbackAgent() error {
+	if h.fallbackRunner != nil {
+		return nil // Already initialized
+	}
+
+	log.Printf("[PreCallReportHandler] Initializing fallback model: %s", h.config.FallbackModel)
+
+	ctx := context.Background()
+
+	// Create fallback model
+	fallbackModel, err := gemini.NewModel(ctx, h.config.FallbackModel, h.clientConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create fallback model: %w", err)
+	}
+
+	// Build instruction for the agent
+	instruction := buildAgentInstruction(h.config.CustomInstruction)
+
+	// Create fallback agent
+	h.fallbackAgent, err = llmagent.New(llmagent.Config{
+		Name:        "pre_call_report_agent_fallback",
+		Model:       fallbackModel,
+		Description: "AI agent that generates comprehensive pre-call reports for sales leads based on company website data (fallback).",
+		Instruction: instruction,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create fallback agent: %w", err)
+	}
+
+	// Create fallback runner
+	h.fallbackRunner, err = runner.New(runner.Config{
+		AppName:        "pre_call_report_generator_fallback",
+		Agent:          h.fallbackAgent,
+		SessionService: h.sessionService,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create fallback runner: %w", err)
+	}
+
+	log.Printf("[PreCallReportHandler] Fallback model initialized successfully: %s", h.config.FallbackModel)
+	return nil
+}
+
+// isReportQuotaExceededError checks if the error is a quota exceeded (429) error
+func isReportQuotaExceededError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "429") || strings.Contains(errStr, "RESOURCE_EXHAUSTED") || strings.Contains(errStr, "quota")
 }
 
 // buildAgentInstruction creates the instruction prompt for the agent (bilingual support)
@@ -310,18 +376,18 @@ func (h *PreCallReportHandler) GenerateReport(ctx context.Context, result Organi
 
 	// Run the agent
 	var responseText string
+	var generationErr error
 	runConfig := agent.RunConfig{
 		StreamingMode: agent.StreamingModeNone,
 	}
 
 	log.Printf("[PreCallReportHandler] Generating report for: %s (session: %s)", result.Link, sessionID)
 
+	// Try with primary model
 	for event, err := range h.runner.Run(ctx, userID, sessionID, userMessage, runConfig) {
 		if err != nil {
-			log.Printf("[PreCallReportHandler] Error during generation for %s: %v", result.Link, err)
-			report.Error = fmt.Sprintf("generation failed: %v", err)
-			report.Success = false
-			return report
+			generationErr = err
+			break
 		}
 
 		// Collect response text
@@ -332,6 +398,68 @@ func (h *PreCallReportHandler) GenerateReport(ctx context.Context, result Organi
 				}
 			}
 		}
+	}
+
+	// If primary model failed with quota error, try fallback
+	if generationErr != nil && isReportQuotaExceededError(generationErr) {
+		log.Printf("[PreCallReportHandler] Quota exceeded for primary model, trying fallback: %s", h.config.FallbackModel)
+
+		// Initialize fallback agent if needed
+		if err := h.initFallbackAgent(); err != nil {
+			log.Printf("[PreCallReportHandler] Failed to initialize fallback agent: %v", err)
+			report.Error = fmt.Sprintf("generation failed (primary quota exceeded, fallback init failed): %v", err)
+			report.Success = false
+			return report
+		}
+
+		// Create a new session for fallback
+		fallbackResp, err := h.sessionService.Create(ctx, &session.CreateRequest{
+			AppName: "pre_call_report_generator_fallback",
+			UserID:  userID,
+		})
+		if err != nil {
+			log.Printf("[PreCallReportHandler] Failed to create fallback session: %v", err)
+			report.Error = fmt.Sprintf("generation failed (fallback session error): %v", err)
+			report.Success = false
+			return report
+		}
+		fallbackSessionID := fallbackResp.Session.ID()
+		defer func() {
+			_ = h.sessionService.Delete(ctx, &session.DeleteRequest{
+				AppName:   "pre_call_report_generator_fallback",
+				UserID:    userID,
+				SessionID: fallbackSessionID,
+			})
+		}()
+
+		// Reset for fallback attempt
+		responseText = ""
+		generationErr = nil
+
+		log.Printf("[PreCallReportHandler] Retrying with fallback model for: %s (session: %s)", result.Link, fallbackSessionID)
+
+		for event, err := range h.fallbackRunner.Run(ctx, userID, fallbackSessionID, userMessage, runConfig) {
+			if err != nil {
+				generationErr = err
+				break
+			}
+
+			if event.Content != nil {
+				for _, part := range event.Content.Parts {
+					if part.Text != "" {
+						responseText += part.Text
+					}
+				}
+			}
+		}
+	}
+
+	// Handle final error
+	if generationErr != nil {
+		log.Printf("[PreCallReportHandler] Error during generation for %s: %v", result.Link, generationErr)
+		report.Error = fmt.Sprintf("generation failed: %v", generationErr)
+		report.Success = false
+		return report
 	}
 
 	if responseText == "" {

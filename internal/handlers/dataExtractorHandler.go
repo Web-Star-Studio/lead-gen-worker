@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +25,8 @@ const (
 	MaxConcurrentExtractions = 5
 	// DefaultExtractorModel is the default Gemini model for data extraction
 	DefaultExtractorModel = "gemini-2.5-flash"
+	// DefaultExtractorFallbackModel is the fallback model when primary model quota is exceeded
+	DefaultExtractorFallbackModel = "gemini-2.5-pro"
 )
 
 // ExtractedData contains structured company information extracted from scraped content
@@ -61,6 +64,8 @@ type DataExtractorConfig struct {
 	APIKey string
 	// Model is the Gemini model to use (default: gemini-2.5-flash for speed)
 	Model string
+	// FallbackModel is used when primary model quota is exceeded (default: gemini-2.5-pro)
+	FallbackModel string
 	// Timeout for extracting data from each result
 	Timeout time.Duration
 	// MaxConcurrent limits parallel extractions
@@ -79,6 +84,10 @@ type DataExtractorHandler struct {
 	agent          agent.Agent
 	runner         *runner.Runner
 	sessionService session.Service
+	// Fallback resources
+	fallbackAgent  agent.Agent
+	fallbackRunner *runner.Runner
+	clientConfig   *genai.ClientConfig
 }
 
 // NewDataExtractorHandler creates a new DataExtractorHandler instance
@@ -117,6 +126,9 @@ func NewDataExtractorHandler(config DataExtractorConfig) (*DataExtractorHandler,
 		if config.Model == "" {
 			config.Model = DefaultExtractorModel
 		}
+	}
+	if config.FallbackModel == "" {
+		config.FallbackModel = DefaultExtractorFallbackModel
 	}
 	if config.Timeout == 0 {
 		config.Timeout = DefaultExtractionTimeout
@@ -179,7 +191,7 @@ func NewDataExtractorHandler(config DataExtractorConfig) (*DataExtractorHandler,
 		return nil, fmt.Errorf("failed to create runner: %w", err)
 	}
 
-	log.Printf("[DataExtractorHandler] Successfully initialized with model: %s", config.Model)
+	log.Printf("[DataExtractorHandler] Successfully initialized with model: %s (fallback: %s)", config.Model, config.FallbackModel)
 
 	_ = model // model is stored internally by the agent
 
@@ -188,7 +200,61 @@ func NewDataExtractorHandler(config DataExtractorConfig) (*DataExtractorHandler,
 		agent:          extractorAgent,
 		runner:         r,
 		sessionService: sessionService,
+		clientConfig:   clientConfig,
 	}, nil
+}
+
+// initFallbackAgent initializes the fallback agent lazily when needed
+func (h *DataExtractorHandler) initFallbackAgent() error {
+	if h.fallbackRunner != nil {
+		return nil // Already initialized
+	}
+
+	log.Printf("[DataExtractorHandler] Initializing fallback model: %s", h.config.FallbackModel)
+
+	ctx := context.Background()
+
+	// Create fallback model
+	fallbackModel, err := gemini.NewModel(ctx, h.config.FallbackModel, h.clientConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create fallback model: %w", err)
+	}
+
+	// Build instruction for the agent
+	instruction := buildExtractorInstruction()
+
+	// Create fallback agent
+	h.fallbackAgent, err = llmagent.New(llmagent.Config{
+		Name:        "data_extractor_agent_fallback",
+		Model:       fallbackModel,
+		Description: "An AI agent that extracts structured company contact information from website content (fallback).",
+		Instruction: instruction,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create fallback agent: %w", err)
+	}
+
+	// Create fallback runner
+	h.fallbackRunner, err = runner.New(runner.Config{
+		AppName:        "data_extractor_fallback",
+		Agent:          h.fallbackAgent,
+		SessionService: h.sessionService,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create fallback runner: %w", err)
+	}
+
+	log.Printf("[DataExtractorHandler] Fallback model initialized successfully: %s", h.config.FallbackModel)
+	return nil
+}
+
+// isExtractorQuotaExceededError checks if the error is a quota exceeded (429) error
+func isExtractorQuotaExceededError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "429") || strings.Contains(errStr, "RESOURCE_EXHAUSTED") || strings.Contains(errStr, "quota")
 }
 
 // buildExtractorInstruction creates the instruction prompt for the data extractor agent
@@ -289,18 +355,18 @@ func (h *DataExtractorHandler) ExtractData(ctx context.Context, result OrganicRe
 
 	// Run the agent
 	var responseText string
+	var extractionErr error
 	runConfig := agent.RunConfig{
 		StreamingMode: agent.StreamingModeNone,
 	}
 
 	log.Printf("[DataExtractorHandler] Extracting data for: %s (session: %s)", result.Link, sessionID)
 
+	// Try with primary model
 	for event, err := range h.runner.Run(ctx, userID, sessionID, userMessage, runConfig) {
 		if err != nil {
-			log.Printf("[DataExtractorHandler] Error during extraction for %s: %v", result.Link, err)
-			extracted.Error = fmt.Sprintf("extraction failed: %v", err)
-			extracted.Success = false
-			return extracted
+			extractionErr = err
+			break
 		}
 
 		if event.Content != nil {
@@ -310,6 +376,68 @@ func (h *DataExtractorHandler) ExtractData(ctx context.Context, result OrganicRe
 				}
 			}
 		}
+	}
+
+	// If primary model failed with quota error, try fallback
+	if extractionErr != nil && isExtractorQuotaExceededError(extractionErr) {
+		log.Printf("[DataExtractorHandler] Quota exceeded for primary model, trying fallback: %s", h.config.FallbackModel)
+
+		// Initialize fallback agent if needed
+		if err := h.initFallbackAgent(); err != nil {
+			log.Printf("[DataExtractorHandler] Failed to initialize fallback agent: %v", err)
+			extracted.Error = fmt.Sprintf("extraction failed (primary quota exceeded, fallback init failed): %v", err)
+			extracted.Success = false
+			return extracted
+		}
+
+		// Create a new session for fallback
+		fallbackResp, err := h.sessionService.Create(ctx, &session.CreateRequest{
+			AppName: "data_extractor_fallback",
+			UserID:  userID,
+		})
+		if err != nil {
+			log.Printf("[DataExtractorHandler] Failed to create fallback session: %v", err)
+			extracted.Error = fmt.Sprintf("extraction failed (fallback session error): %v", err)
+			extracted.Success = false
+			return extracted
+		}
+		fallbackSessionID := fallbackResp.Session.ID()
+		defer func() {
+			_ = h.sessionService.Delete(ctx, &session.DeleteRequest{
+				AppName:   "data_extractor_fallback",
+				UserID:    userID,
+				SessionID: fallbackSessionID,
+			})
+		}()
+
+		// Reset for fallback attempt
+		responseText = ""
+		extractionErr = nil
+
+		log.Printf("[DataExtractorHandler] Retrying with fallback model for: %s (session: %s)", result.Link, fallbackSessionID)
+
+		for event, err := range h.fallbackRunner.Run(ctx, userID, fallbackSessionID, userMessage, runConfig) {
+			if err != nil {
+				extractionErr = err
+				break
+			}
+
+			if event.Content != nil {
+				for _, part := range event.Content.Parts {
+					if part.Text != "" {
+						responseText += part.Text
+					}
+				}
+			}
+		}
+	}
+
+	// Handle final error
+	if extractionErr != nil {
+		log.Printf("[DataExtractorHandler] Error during extraction for %s: %v", result.Link, extractionErr)
+		extracted.Error = fmt.Sprintf("extraction failed: %v", extractionErr)
+		extracted.Success = false
+		return extracted
 	}
 
 	// Parse the response
