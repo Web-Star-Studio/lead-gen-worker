@@ -118,6 +118,17 @@ func (c *AutomationController) HandleAutomationTask(ctx *gin.Context) {
 		}
 	}
 
+	// Validate required fields
+	if err := validateAutomationTask(&task); err != nil {
+		automationControllerLog("WARN", "Task validation failed", map[string]interface{}{
+			"endpoint":  "/webhooks/automation-task",
+			"client_ip": clientIP,
+			"error":     err.Error(),
+		})
+		ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error()})
+		return
+	}
+
 	leadCount := len(task.LeadIDs)
 	if task.LeadID != nil {
 		leadCount++
@@ -436,8 +447,14 @@ func parseLeadFromRecord(record map[string]interface{}) dto.Lead {
 func parseAutomationTaskFromRecord(record map[string]interface{}) dto.AutomationTask {
 	task := dto.AutomationTask{}
 
+	// Accept both "id" and "task_id" for compatibility with different payload formats
 	if id, ok := record["id"].(string); ok {
 		task.ID = id
+	}
+	if task.ID == "" {
+		if taskID, ok := record["task_id"].(string); ok {
+			task.ID = taskID
+		}
 	}
 	if userID, ok := record["user_id"].(string); ok {
 		task.UserID = userID
@@ -473,12 +490,37 @@ func parseAutomationTaskFromRecord(record map[string]interface{}) dto.Automation
 		}
 	}
 
+	// Calculate lead count
+	leadCount := len(task.LeadIDs)
+	if task.LeadID != nil {
+		leadCount++
+	}
+	task.ItemsTotal = leadCount
+
 	automationControllerLog("DEBUG", "Parsed automation task from record", map[string]interface{}{
 		"task_id":    task.ID,
 		"user_id":    task.UserID,
 		"task_type":  task.TaskType,
-		"lead_count": len(task.LeadIDs),
+		"lead_count": leadCount,
 	})
 
 	return task
+}
+
+// validateAutomationTask validates required fields for an automation task
+func validateAutomationTask(task *dto.AutomationTask) error {
+	if task.ID == "" {
+		return fmt.Errorf("missing required field: id or task_id")
+	}
+	if task.UserID == "" {
+		return fmt.Errorf("missing required field: user_id")
+	}
+	if task.TaskType == "" {
+		return fmt.Errorf("missing required field: task_type")
+	}
+	// Must have at least one lead
+	if task.LeadID == nil && len(task.LeadIDs) == 0 {
+		return fmt.Errorf("missing required field: lead_id or lead_ids")
+	}
+	return nil
 }
