@@ -313,7 +313,7 @@ func TestFindCaseInsensitive(t *testing.T) {
 func TestBuildAgentInstruction(t *testing.T) {
 	t.Run("without custom instruction", func(t *testing.T) {
 		instruction := buildAgentInstruction("")
-		assert.Contains(t, instruction, "expert sales intelligence analyst")
+		assert.Contains(t, instruction, "multilingual sales intelligence analyst")
 		assert.Contains(t, instruction, "Company Name")
 		assert.Contains(t, instruction, "Talking Points")
 		assert.NotContains(t, instruction, "Additional Instructions")
@@ -322,7 +322,7 @@ func TestBuildAgentInstruction(t *testing.T) {
 	t.Run("with custom instruction", func(t *testing.T) {
 		custom := "Focus on tech companies only"
 		instruction := buildAgentInstruction(custom)
-		assert.Contains(t, instruction, "expert sales intelligence analyst")
+		assert.Contains(t, instruction, "multilingual sales intelligence analyst")
 		assert.Contains(t, instruction, "Additional Instructions")
 		assert.Contains(t, instruction, custom)
 	})
@@ -332,7 +332,11 @@ func TestPreCallReportConfig_Defaults(t *testing.T) {
 	// This test verifies default values without actually creating a handler
 	// (which would require API key)
 	t.Run("default model", func(t *testing.T) {
-		assert.Equal(t, "gemini-2.5-pro-preview-06-05", DefaultGeminiModel)
+		assert.Equal(t, "gemini-2.5-flash", DefaultGeminiModel)
+	})
+
+	t.Run("default fallback model", func(t *testing.T) {
+		assert.Equal(t, "gemini-2.5-pro", DefaultReportFallbackModel)
 	})
 
 	t.Run("default timeout", func(t *testing.T) {
