@@ -99,6 +99,8 @@ type PreCallReportHandler struct {
 	fallbackAgent  agent.Agent
 	fallbackRunner *runner.Runner
 	clientConfig   *genai.ClientConfig
+	// Usage tracking
+	usageTracker *UsageTrackerHandler
 }
 
 // SetBusinessProfile sets the business profile to use for personalizing reports
@@ -123,6 +125,11 @@ func (h *PreCallReportHandler) SetLocation(location string) {
 func (h *PreCallReportHandler) ClearBusinessProfile() {
 	h.businessProfile = nil
 	h.language = LangPortuguese // Reset to default
+}
+
+// SetUsageTracker sets the usage tracker for recording AI usage metrics
+func (h *PreCallReportHandler) SetUsageTracker(tracker *UsageTrackerHandler) {
+	h.usageTracker = tracker
 }
 
 // NewPreCallReportHandler creates a new PreCallReportHandler instance
@@ -325,6 +332,8 @@ Always maintain a professional and helpful tone, focused on enabling effective s
 
 // GenerateReport generates a pre-call report for a single organic result
 func (h *PreCallReportHandler) GenerateReport(ctx context.Context, result OrganicResult) *PreCallReport {
+	startTime := time.Now()
+	modelUsed := h.config.Model
 	report := &PreCallReport{
 		URL:         result.Link,
 		GeneratedAt: time.Now(),
@@ -437,6 +446,7 @@ func (h *PreCallReportHandler) GenerateReport(ctx context.Context, result Organi
 		generationErr = nil
 
 		log.Printf("[PreCallReportHandler] Retrying with fallback model for: %s (session: %s)", result.Link, fallbackSessionID)
+		modelUsed = h.config.FallbackModel
 
 		for event, err := range h.fallbackRunner.Run(ctx, userID, fallbackSessionID, userMessage, runConfig) {
 			if err != nil {
@@ -459,18 +469,33 @@ func (h *PreCallReportHandler) GenerateReport(ctx context.Context, result Organi
 		log.Printf("[PreCallReportHandler] Error during generation for %s: %v", result.Link, generationErr)
 		report.Error = fmt.Sprintf("generation failed: %v", generationErr)
 		report.Success = false
+		// Track failed generation
+		if h.usageTracker != nil {
+			errMsg := generationErr.Error()
+			h.usageTracker.TrackPreCallReport("system", nil, nil, modelUsed, prompt, "", startTime, false, &errMsg)
+		}
 		return report
 	}
 
 	if responseText == "" {
 		report.Error = "empty response from AI"
 		report.Success = false
+		// Track failed generation (empty response)
+		if h.usageTracker != nil {
+			errMsg := "empty response from AI"
+			h.usageTracker.TrackPreCallReport("system", nil, nil, modelUsed, prompt, "", startTime, false, &errMsg)
+		}
 		return report
 	}
 
 	// Parse the response into structured report
 	h.parseResponse(responseText, report)
 	report.Success = true
+
+	// Track successful generation
+	if h.usageTracker != nil {
+		h.usageTracker.TrackPreCallReport("system", nil, nil, modelUsed, prompt, responseText, startTime, true, nil)
+	}
 
 	log.Printf("[PreCallReportHandler] Successfully generated report for: %s", result.Link)
 

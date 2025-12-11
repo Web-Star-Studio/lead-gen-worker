@@ -94,6 +94,8 @@ type ColdEmailHandler struct {
 	fallbackAgent  agent.Agent
 	fallbackRunner *runner.Runner
 	clientConfig   *genai.ClientConfig // Store for creating fallback
+	// Usage tracking
+	usageTracker *UsageTrackerHandler
 }
 
 // SetBusinessProfile sets the business profile to use for personalizing emails
@@ -118,6 +120,11 @@ func (h *ColdEmailHandler) SetLocation(location string) {
 func (h *ColdEmailHandler) ClearBusinessProfile() {
 	h.businessProfile = nil
 	h.language = LangPortuguese // Reset to default
+}
+
+// SetUsageTracker sets the usage tracker for recording AI usage metrics
+func (h *ColdEmailHandler) SetUsageTracker(tracker *UsageTrackerHandler) {
+	h.usageTracker = tracker
 }
 
 // NewColdEmailHandler creates a new ColdEmailHandler instance
@@ -357,6 +364,8 @@ type EmailGenerationInput struct {
 
 // GenerateEmail generates a cold email for a single lead
 func (h *ColdEmailHandler) GenerateEmail(ctx context.Context, input EmailGenerationInput) *ColdEmail {
+	startTime := time.Now()
+	modelUsed := h.config.Model
 	email := &ColdEmail{
 		URL:         input.Result.Link,
 		GeneratedAt: time.Now(),
@@ -478,6 +487,7 @@ func (h *ColdEmailHandler) GenerateEmail(ctx context.Context, input EmailGenerat
 		generationErr = nil
 
 		log.Printf("[ColdEmailHandler] Retrying with fallback model for: %s (session: %s)", input.Result.Link, fallbackSessionID)
+		modelUsed = h.config.FallbackModel
 
 		for event, err := range h.fallbackRunner.Run(ctx, userID, fallbackSessionID, userMessage, runConfig) {
 			if err != nil {
@@ -500,18 +510,33 @@ func (h *ColdEmailHandler) GenerateEmail(ctx context.Context, input EmailGenerat
 		log.Printf("[ColdEmailHandler] Error during generation for %s: %v", input.Result.Link, generationErr)
 		email.Error = fmt.Sprintf("generation failed: %v", generationErr)
 		email.Success = false
+		// Track failed generation
+		if h.usageTracker != nil {
+			errMsg := generationErr.Error()
+			h.usageTracker.TrackColdEmail("system", nil, nil, modelUsed, prompt, "", startTime, false, &errMsg)
+		}
 		return email
 	}
 
 	if responseText == "" {
 		email.Error = "empty response from AI"
 		email.Success = false
+		// Track failed generation (empty response)
+		if h.usageTracker != nil {
+			errMsg := "empty response from AI"
+			h.usageTracker.TrackColdEmail("system", nil, nil, modelUsed, prompt, "", startTime, false, &errMsg)
+		}
 		return email
 	}
 
 	// Parse the response into structured email
 	h.parseEmailResponse(responseText, email)
 	email.Success = true
+
+	// Track successful generation
+	if h.usageTracker != nil {
+		h.usageTracker.TrackColdEmail("system", nil, nil, modelUsed, prompt, responseText, startTime, true, nil)
+	}
 
 	log.Printf("[ColdEmailHandler] Successfully generated email for: %s", input.Result.Link)
 

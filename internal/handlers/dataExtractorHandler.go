@@ -88,6 +88,8 @@ type DataExtractorHandler struct {
 	fallbackAgent  agent.Agent
 	fallbackRunner *runner.Runner
 	clientConfig   *genai.ClientConfig
+	// Usage tracking
+	usageTracker *UsageTrackerHandler
 }
 
 // NewDataExtractorHandler creates a new DataExtractorHandler instance
@@ -248,6 +250,11 @@ func (h *DataExtractorHandler) initFallbackAgent() error {
 	return nil
 }
 
+// SetUsageTracker sets the usage tracker for recording AI usage metrics
+func (h *DataExtractorHandler) SetUsageTracker(tracker *UsageTrackerHandler) {
+	h.usageTracker = tracker
+}
+
 // isExtractorQuotaExceededError checks if the error is a quota exceeded (429) error
 func isExtractorQuotaExceededError(err error) bool {
 	if err == nil {
@@ -303,6 +310,7 @@ If no information can be extracted, respond with:
 
 // ExtractData extracts structured data from a single organic result
 func (h *DataExtractorHandler) ExtractData(ctx context.Context, result OrganicResult) *ExtractedData {
+	startTime := time.Now()
 	extracted := &ExtractedData{
 		URL:         result.Link,
 		Website:     result.Link,
@@ -318,6 +326,7 @@ func (h *DataExtractorHandler) ExtractData(ctx context.Context, result OrganicRe
 
 	// Build prompt
 	prompt := h.buildPrompt(result)
+	modelUsed := h.config.Model
 
 	// Apply timeout
 	ctx, cancel := context.WithTimeout(ctx, h.config.Timeout)
@@ -415,6 +424,7 @@ func (h *DataExtractorHandler) ExtractData(ctx context.Context, result OrganicRe
 		extractionErr = nil
 
 		log.Printf("[DataExtractorHandler] Retrying with fallback model for: %s (session: %s)", result.Link, fallbackSessionID)
+		modelUsed = h.config.FallbackModel
 
 		for event, err := range h.fallbackRunner.Run(ctx, userID, fallbackSessionID, userMessage, runConfig) {
 			if err != nil {
@@ -437,6 +447,11 @@ func (h *DataExtractorHandler) ExtractData(ctx context.Context, result OrganicRe
 		log.Printf("[DataExtractorHandler] Error during extraction for %s: %v", result.Link, extractionErr)
 		extracted.Error = fmt.Sprintf("extraction failed: %v", extractionErr)
 		extracted.Success = false
+		// Track failed extraction
+		if h.usageTracker != nil {
+			errMsg := extractionErr.Error()
+			h.usageTracker.TrackDataExtraction("system", nil, nil, modelUsed, prompt, "", startTime, false, &errMsg)
+		}
 		return extracted
 	}
 
@@ -457,6 +472,12 @@ func (h *DataExtractorHandler) ExtractData(ctx context.Context, result OrganicRe
 	}
 
 	extracted.Success = true
+
+	// Track successful extraction
+	if h.usageTracker != nil {
+		h.usageTracker.TrackDataExtraction("system", nil, nil, modelUsed, prompt, responseText, startTime, true, nil)
+	}
+
 	return extracted
 }
 

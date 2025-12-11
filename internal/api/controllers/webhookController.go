@@ -33,7 +33,7 @@ func NewWebhookController(webhookSecret string, processor *services.JobProcessor
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Bearer token with webhook secret"
-// @Param payload body dto.WebhookPayload true "Webhook payload from Supabase"
+// @Param payload body dto.Job true "Job payload from Supabase"
 // @Success 200 {object} map[string]string "Webhook accepted"
 // @Failure 401 {object} dto.ErrorResponse "Unauthorized"
 // @Failure 400 {object} dto.ErrorResponse "Bad request"

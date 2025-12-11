@@ -86,6 +86,15 @@ func main() {
 		}
 	}
 
+	// Initialize UsageTrackerHandler if Supabase is configured
+	var usageTracker *handlers.UsageTrackerHandler
+	if supabaseHandler != nil {
+		usageTracker = handlers.NewUsageTrackerHandler(supabaseHandler)
+		log.Printf("UsageTrackerHandler initialized - usage tracking enabled")
+	} else {
+		log.Printf("UsageTrackerHandler not initialized - usage tracking disabled (requires Supabase)")
+	}
+
 	// Initialize DataExtractorHandler if Google API key or Vertex AI is configured
 	var dataExtractorHandler *handlers.DataExtractorHandler
 	if cfg.GoogleAPIKey != "" || cfg.UseVertexAI {
@@ -106,6 +115,10 @@ func main() {
 			log.Printf("Continuing without data extraction functionality")
 		} else {
 			searchHandler.SetDataExtractorHandler(dataExtractorHandler)
+			// Set usage tracker
+			if usageTracker != nil {
+				dataExtractorHandler.SetUsageTracker(usageTracker)
+			}
 			backend := "Google AI Studio"
 			if cfg.UseVertexAI {
 				backend = "Vertex AI"
@@ -137,6 +150,10 @@ func main() {
 			log.Printf("Continuing without pre-call report generation")
 		} else {
 			searchHandler.SetPreCallReportHandler(preCallReportHandler)
+			// Set usage tracker
+			if usageTracker != nil {
+				preCallReportHandler.SetUsageTracker(usageTracker)
+			}
 			backend := "Google AI Studio"
 			if cfg.UseVertexAI {
 				backend = "Vertex AI"
@@ -168,6 +185,10 @@ func main() {
 			log.Printf("Continuing without cold email generation")
 		} else {
 			searchHandler.SetColdEmailHandler(coldEmailHandler)
+			// Set usage tracker
+			if usageTracker != nil {
+				coldEmailHandler.SetUsageTracker(usageTracker)
+			}
 			backend := "Google AI Studio"
 			if cfg.UseVertexAI {
 				backend = "Vertex AI"
@@ -199,8 +220,17 @@ func main() {
 		log.Printf("AutomationProcessor not initialized - automation endpoints disabled (requires Supabase and webhook secret)")
 	}
 
+	// Initialize ReportsController if Supabase is configured
+	var reportsController *controllers.ReportsController
+	if supabaseHandler != nil {
+		reportsController = controllers.NewReportsController(supabaseHandler)
+		log.Printf("ReportsController initialized - reports endpoints enabled")
+	} else {
+		log.Printf("ReportsController not initialized - reports endpoints disabled (requires Supabase)")
+	}
+
 	// Setup router
-	router := api.NewRouter(searchHandler, webhookController, automationController)
+	router := api.NewRouter(searchHandler, webhookController, automationController, reportsController)
 
 	// Start server
 	log.Printf("Server starting on port %s", cfg.Port)

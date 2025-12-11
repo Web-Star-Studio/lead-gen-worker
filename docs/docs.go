@@ -24,6 +24,260 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/v1/reports": {
+            "get": {
+                "description": "Retrieves comprehensive usage reports including token usage, costs, and lead generation metrics",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Reports"
+                ],
+                "summary": "Get usage reports",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID to get reports for",
+                        "name": "user_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date for the report period (RFC3339 format)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date for the report period (RFC3339 format)",
+                        "name": "end_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Usage reports",
+                        "schema": {
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.ReportsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/reports/daily": {
+            "get": {
+                "description": "Retrieves usage statistics aggregated by day for charts",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Reports"
+                ],
+                "summary": "Get daily usage",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "user_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date (RFC3339 or YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (RFC3339 or YYYY-MM-DD)",
+                        "name": "end_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Daily usage statistics",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.DailyUsage"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/reports/operations": {
+            "get": {
+                "description": "Retrieves usage statistics grouped by AI operation type",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Reports"
+                ],
+                "summary": "Get operation statistics",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "user_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date (RFC3339 or YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (RFC3339 or YYYY-MM-DD)",
+                        "name": "end_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Operation statistics",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.OperationStats"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/reports/summary": {
+            "get": {
+                "description": "Retrieves a quick summary of token usage and costs",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Reports"
+                ],
+                "summary": "Get usage summary",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID to get summary for",
+                        "name": "user_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date (RFC3339 or YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (RFC3339 or YYYY-MM-DD)",
+                        "name": "end_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Usage summary",
+                        "schema": {
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.UsageSummary"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/search": {
             "post": {
                 "description": "Perform a Google search using SerpAPI and retrieve organic results with advanced filtering options",
@@ -44,7 +298,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dto.SearchRequest"
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.SearchRequest"
                         }
                     }
                 ],
@@ -52,19 +306,243 @@ const docTemplate = `{
                     "200": {
                         "description": "Successful search results",
                         "schema": {
-                            "$ref": "#/definitions/handlers.SearchResponse"
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_handlers.SearchResponse"
                         }
                     },
                     "400": {
                         "description": "Bad request - validation error",
                         "schema": {
-                            "$ref": "#/definitions/dto.ErrorResponse"
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/dto.ErrorResponse"
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/webhooks/automation-task": {
+            "post": {
+                "description": "Receives webhook when a new automation task is created",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Webhooks"
+                ],
+                "summary": "Handle automation task webhook",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bearer token with webhook secret",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Automation task payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.AutomationTask"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Task accepted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/webhooks/batch-enrichment": {
+            "post": {
+                "description": "Manually trigger enrichment for a batch of leads",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Webhooks"
+                ],
+                "summary": "Handle batch enrichment request",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bearer token with webhook secret",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Batch enrichment request",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.AutomationTaskCreate"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Batch accepted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/webhooks/job-created": {
+            "post": {
+                "description": "Receives Supabase database webhook when a new job is created",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Webhooks"
+                ],
+                "summary": "Handle job created webhook",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bearer token with webhook secret",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Job payload from Supabase",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.Job"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Webhook accepted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/webhooks/lead-created": {
+            "post": {
+                "description": "Receives webhook when a new lead is created for auto-enrichment",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Webhooks"
+                ],
+                "summary": "Handle lead created webhook",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bearer token with webhook secret",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Lead payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.Lead"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lead accepted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse"
                         }
                     }
                 }
@@ -72,7 +550,121 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "dto.ErrorResponse": {
+        "webstar_noturno-leadgen-worker_internal_dto.AutomationTask": {
+            "type": "object",
+            "properties": {
+                "business_profile_id": {
+                    "type": "string"
+                },
+                "completed_at": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "error_message": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "items_failed": {
+                    "type": "integer"
+                },
+                "items_processed": {
+                    "type": "integer"
+                },
+                "items_succeeded": {
+                    "type": "integer"
+                },
+                "items_total": {
+                    "type": "integer"
+                },
+                "lead_id": {
+                    "description": "Single lead",
+                    "type": "string"
+                },
+                "lead_ids": {
+                    "description": "Batch of leads",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "max_retries": {
+                    "type": "integer"
+                },
+                "priority": {
+                    "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.TaskPriority"
+                },
+                "retry_count": {
+                    "type": "integer"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.TaskStatus"
+                },
+                "task_type": {
+                    "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.TaskType"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "webstar_noturno-leadgen-worker_internal_dto.AutomationTaskCreate": {
+            "type": "object",
+            "properties": {
+                "business_profile_id": {
+                    "type": "string"
+                },
+                "lead_id": {
+                    "type": "string"
+                },
+                "lead_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "priority": {
+                    "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.TaskPriority"
+                },
+                "task_type": {
+                    "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.TaskType"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "webstar_noturno-leadgen-worker_internal_dto.DailyUsage": {
+            "description": "Usage statistics aggregated by day",
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "failed_calls": {
+                    "type": "integer"
+                },
+                "successful_calls": {
+                    "type": "integer"
+                },
+                "total_calls": {
+                    "type": "integer"
+                },
+                "total_cost_usd": {
+                    "type": "number"
+                },
+                "total_tokens": {
+                    "type": "integer"
+                }
+            }
+        },
+        "webstar_noturno-leadgen-worker_internal_dto.ErrorResponse": {
             "description": "Error response returned when request fails",
             "type": "object",
             "properties": {
@@ -83,7 +675,332 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.SearchRequest": {
+        "webstar_noturno-leadgen-worker_internal_dto.Job": {
+            "type": "object",
+            "properties": {
+                "business_profile": {
+                    "description": "ID of the business profile to use for personalization",
+                    "type": "string"
+                },
+                "completed_at": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "error_message": {
+                    "type": "string"
+                },
+                "excluded_domains": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "icp_id": {
+                    "type": "string"
+                },
+                "icp_name": {
+                    "type": "string"
+                },
+                "job_id": {
+                    "type": "string"
+                },
+                "lead_quantity": {
+                    "type": "integer"
+                },
+                "leads_generated": {
+                    "type": "integer"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "required_fields": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "pending, processing, completed, failed",
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "webstar_noturno-leadgen-worker_internal_dto.Lead": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "company_name": {
+                    "type": "string"
+                },
+                "contact_name": {
+                    "type": "string"
+                },
+                "contact_role": {
+                    "type": "string"
+                },
+                "emails": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "extra_data": {
+                    "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.LeadExtraData"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "job_id": {
+                    "type": "string"
+                },
+                "phones": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "social_media": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "source": {
+                    "description": "\"Google\" or \"cnpj\"",
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                },
+                "website": {
+                    "type": "string"
+                }
+            }
+        },
+        "webstar_noturno-leadgen-worker_internal_dto.LeadExtraData": {
+            "type": "object",
+            "properties": {
+                "capital": {
+                    "type": "string"
+                },
+                "cnae_code": {
+                    "type": "string"
+                },
+                "cnae_description": {
+                    "type": "string"
+                },
+                "cnpj": {
+                    "type": "string"
+                },
+                "company_size": {
+                    "type": "string"
+                },
+                "founded_at": {
+                    "type": "string"
+                },
+                "legal_nature": {
+                    "type": "string"
+                },
+                "mei_optante": {
+                    "type": "boolean"
+                },
+                "nome_fantasia": {
+                    "type": "string"
+                },
+                "partners": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "razao_social": {
+                    "type": "string"
+                },
+                "secondary_activities": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "simples_optante": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "webstar_noturno-leadgen-worker_internal_dto.LeadGenerationStats": {
+            "description": "Statistics specific to lead generation pipeline",
+            "type": "object",
+            "properties": {
+                "avg_cost_per_lead": {
+                    "type": "number"
+                },
+                "avg_leads_per_job": {
+                    "type": "number"
+                },
+                "total_emails_generated": {
+                    "type": "integer"
+                },
+                "total_jobs_processed": {
+                    "type": "integer"
+                },
+                "total_leads_generated": {
+                    "type": "integer"
+                },
+                "total_reports_generated": {
+                    "type": "integer"
+                }
+            }
+        },
+        "webstar_noturno-leadgen-worker_internal_dto.ModelUsage": {
+            "description": "Usage statistics by AI model",
+            "type": "object",
+            "properties": {
+                "avg_tokens_per_call": {
+                    "type": "number"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "total_calls": {
+                    "type": "integer"
+                },
+                "total_cost_usd": {
+                    "type": "number"
+                },
+                "total_tokens": {
+                    "type": "integer"
+                }
+            }
+        },
+        "webstar_noturno-leadgen-worker_internal_dto.OperationStats": {
+            "description": "Statistics for a specific AI operation type",
+            "type": "object",
+            "properties": {
+                "avg_duration_ms": {
+                    "type": "number"
+                },
+                "failed_calls": {
+                    "type": "integer"
+                },
+                "operation_type": {
+                    "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.OperationType"
+                },
+                "success_rate": {
+                    "type": "number"
+                },
+                "successful_calls": {
+                    "type": "integer"
+                },
+                "total_calls": {
+                    "type": "integer"
+                },
+                "total_cost_usd": {
+                    "type": "number"
+                },
+                "total_input_tokens": {
+                    "type": "integer"
+                },
+                "total_output_tokens": {
+                    "type": "integer"
+                },
+                "total_tokens": {
+                    "type": "integer"
+                }
+            }
+        },
+        "webstar_noturno-leadgen-worker_internal_dto.OperationType": {
+            "type": "string",
+            "enum": [
+                "data_extraction",
+                "pre_call_report",
+                "cold_email",
+                "website_scraping"
+            ],
+            "x-enum-varnames": [
+                "OperationDataExtraction",
+                "OperationPreCallReport",
+                "OperationColdEmail",
+                "OperationWebsiteScraping"
+            ]
+        },
+        "webstar_noturno-leadgen-worker_internal_dto.ReportPeriod": {
+            "description": "Time range covered by the report",
+            "type": "object",
+            "properties": {
+                "days_count": {
+                    "type": "integer"
+                },
+                "end_date": {
+                    "type": "string"
+                },
+                "start_date": {
+                    "type": "string"
+                }
+            }
+        },
+        "webstar_noturno-leadgen-worker_internal_dto.ReportsResponse": {
+            "description": "Complete reports response for dashboard visualization",
+            "type": "object",
+            "properties": {
+                "by_model": {
+                    "description": "ByModel contains stats grouped by AI model",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.ModelUsage"
+                    }
+                },
+                "by_operation": {
+                    "description": "ByOperation contains stats grouped by operation type",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.OperationStats"
+                    }
+                },
+                "daily_usage": {
+                    "description": "DailyUsage contains usage over time",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.DailyUsage"
+                    }
+                },
+                "lead_generation": {
+                    "description": "LeadGeneration contains lead-specific metrics",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.LeadGenerationStats"
+                        }
+                    ]
+                },
+                "period": {
+                    "description": "Period indicates the date range of the report",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.ReportPeriod"
+                        }
+                    ]
+                },
+                "summary": {
+                    "description": "Summary contains overall usage metrics",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_dto.UsageSummary"
+                        }
+                    ]
+                }
+            }
+        },
+        "webstar_noturno-leadgen-worker_internal_dto.SearchRequest": {
             "description": "Search request parameters for Google search",
             "type": "object",
             "required": [
@@ -135,10 +1052,239 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.OrganicResult": {
+        "webstar_noturno-leadgen-worker_internal_dto.TaskPriority": {
+            "type": "integer",
+            "enum": [
+                1,
+                2,
+                3
+            ],
+            "x-enum-comments": {
+                "TaskPriorityHigh": "Lead search jobs",
+                "TaskPriorityLow": "Manual batch operations",
+                "TaskPriorityMedium": "Auto-triggered enrichment"
+            },
+            "x-enum-descriptions": [
+                "Lead search jobs",
+                "Auto-triggered enrichment",
+                "Manual batch operations"
+            ],
+            "x-enum-varnames": [
+                "TaskPriorityHigh",
+                "TaskPriorityMedium",
+                "TaskPriorityLow"
+            ]
+        },
+        "webstar_noturno-leadgen-worker_internal_dto.TaskStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "processing",
+                "completed",
+                "failed"
+            ],
+            "x-enum-varnames": [
+                "TaskStatusPending",
+                "TaskStatusProcessing",
+                "TaskStatusCompleted",
+                "TaskStatusFailed"
+            ]
+        },
+        "webstar_noturno-leadgen-worker_internal_dto.TaskType": {
+            "type": "string",
+            "enum": [
+                "lead_enrichment",
+                "precall_generation",
+                "email_generation",
+                "full_enrichment"
+            ],
+            "x-enum-comments": {
+                "TaskTypeEmailGeneration": "Generate cold email",
+                "TaskTypeFullEnrichment": "All of the above",
+                "TaskTypeLeadEnrichment": "Scrape + Extract data",
+                "TaskTypePreCallGeneration": "Generate pre-call report"
+            },
+            "x-enum-descriptions": [
+                "Scrape + Extract data",
+                "Generate pre-call report",
+                "Generate cold email",
+                "All of the above"
+            ],
+            "x-enum-varnames": [
+                "TaskTypeLeadEnrichment",
+                "TaskTypePreCallGeneration",
+                "TaskTypeEmailGeneration",
+                "TaskTypeFullEnrichment"
+            ]
+        },
+        "webstar_noturno-leadgen-worker_internal_dto.UsageSummary": {
+            "description": "Overall usage summary with key metrics",
+            "type": "object",
+            "properties": {
+                "avg_cost_per_call": {
+                    "type": "number"
+                },
+                "avg_duration_ms": {
+                    "type": "number"
+                },
+                "avg_tokens_per_call": {
+                    "type": "number"
+                },
+                "failed_calls": {
+                    "type": "integer"
+                },
+                "success_rate": {
+                    "type": "number"
+                },
+                "successful_calls": {
+                    "type": "integer"
+                },
+                "total_calls": {
+                    "type": "integer"
+                },
+                "total_cost_usd": {
+                    "type": "number"
+                },
+                "total_input_tokens": {
+                    "type": "integer"
+                },
+                "total_output_tokens": {
+                    "type": "integer"
+                },
+                "total_tokens": {
+                    "type": "integer"
+                }
+            }
+        },
+        "webstar_noturno-leadgen-worker_internal_handlers.ColdEmail": {
+            "description": "Cold email generated by AI for first contact with a lead",
+            "type": "object",
+            "properties": {
+                "body": {
+                    "description": "Body is the main email content (HTML or plain text)",
+                    "type": "string"
+                },
+                "call_to_action": {
+                    "description": "CallToAction is the specific action requested from the recipient",
+                    "type": "string"
+                },
+                "error": {
+                    "description": "Error contains the error message if email generation failed",
+                    "type": "string"
+                },
+                "generated_at": {
+                    "description": "GeneratedAt is the timestamp when the email was generated",
+                    "type": "string"
+                },
+                "lead_id": {
+                    "description": "LeadID is the ID of the lead this email is for",
+                    "type": "string"
+                },
+                "personalization_notes": {
+                    "description": "PersonalizationNotes explains how the email was personalized",
+                    "type": "string"
+                },
+                "plain_text_body": {
+                    "description": "PlainTextBody is the plain text version of the email",
+                    "type": "string"
+                },
+                "recipient_company": {
+                    "description": "RecipientCompany is the company of the recipient",
+                    "type": "string"
+                },
+                "recipient_name": {
+                    "description": "RecipientName is the name of the person receiving the email",
+                    "type": "string"
+                },
+                "subject": {
+                    "description": "Subject is the email subject line",
+                    "type": "string"
+                },
+                "success": {
+                    "description": "Success indicates whether the email was generated successfully",
+                    "type": "boolean"
+                },
+                "url": {
+                    "description": "URL of the website this email is for",
+                    "type": "string"
+                }
+            }
+        },
+        "webstar_noturno-leadgen-worker_internal_handlers.ExtractedData": {
+            "description": "Company data extracted from website content",
+            "type": "object",
+            "properties": {
+                "address": {
+                    "description": "Physical address if available",
+                    "type": "string"
+                },
+                "company": {
+                    "description": "Company name extracted from the website",
+                    "type": "string"
+                },
+                "contact": {
+                    "description": "Contact person name",
+                    "type": "string"
+                },
+                "contact_role": {
+                    "description": "Contact person role/position",
+                    "type": "string"
+                },
+                "emails": {
+                    "description": "Email addresses found (primary first)",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "error": {
+                    "description": "Error contains error message if extraction failed",
+                    "type": "string"
+                },
+                "extracted_at": {
+                    "description": "ExtractedAt timestamp",
+                    "type": "string"
+                },
+                "phones": {
+                    "description": "Phone numbers found (primary first)",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "social_media": {
+                    "description": "Social media links",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "success": {
+                    "description": "Success indicates whether extraction was successful",
+                    "type": "boolean"
+                },
+                "url": {
+                    "description": "URL of the source website",
+                    "type": "string"
+                },
+                "website": {
+                    "description": "Website (canonical URL)",
+                    "type": "string"
+                }
+            }
+        },
+        "webstar_noturno-leadgen-worker_internal_handlers.OrganicResult": {
             "description": "A single organic search result from Google",
             "type": "object",
             "properties": {
+                "cold_email": {
+                    "description": "ColdEmail contains the AI-generated cold email for first contact",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_handlers.ColdEmail"
+                        }
+                    ]
+                },
                 "displayed_link": {
                     "description": "Displayed URL shown in search results",
                     "type": "string",
@@ -155,6 +1301,14 @@ const docTemplate = `{
                         "10/10 (3)"
                     ]
                 },
+                "extracted_data": {
+                    "description": "ExtractedData contains structured company data extracted by DataExtractorHandler",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_handlers.ExtractedData"
+                        }
+                    ]
+                },
                 "link": {
                     "description": "URL of the search result",
                     "type": "string",
@@ -164,6 +1318,10 @@ const docTemplate = `{
                     "description": "Position of the result in the search results",
                     "type": "integer",
                     "example": 1
+                },
+                "pre_call_report": {
+                    "description": "PreCallReport contains the AI-generated company summary for sales calls",
+                    "type": "string"
                 },
                 "rating": {
                     "description": "Rating score if available",
@@ -187,7 +1345,7 @@ const docTemplate = `{
                     "description": "Sitelinks associated with this result",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/handlers.Sitelinks"
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_handlers.Sitelinks"
                         }
                     ]
                 },
@@ -203,7 +1361,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.Pagination": {
+        "webstar_noturno-leadgen-worker_internal_handlers.Pagination": {
             "description": "Pagination information for search results",
             "type": "object",
             "properties": {
@@ -219,7 +1377,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.SearchResponse": {
+        "webstar_noturno-leadgen-worker_internal_handlers.SearchResponse": {
             "description": "Response containing organic search results and pagination info",
             "type": "object",
             "properties": {
@@ -227,7 +1385,7 @@ const docTemplate = `{
                     "description": "List of organic search results",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/handlers.OrganicResult"
+                        "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_handlers.OrganicResult"
                     }
                 },
                 "pages_fetched": {
@@ -239,7 +1397,7 @@ const docTemplate = `{
                     "description": "Pagination information (for the last page fetched)",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/handlers.Pagination"
+                            "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_handlers.Pagination"
                         }
                     ]
                 },
@@ -250,7 +1408,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.Sitelink": {
+        "webstar_noturno-leadgen-worker_internal_handlers.Sitelink": {
             "description": "Inline sitelink with title and URL",
             "type": "object",
             "properties": {
@@ -266,7 +1424,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.Sitelinks": {
+        "webstar_noturno-leadgen-worker_internal_handlers.Sitelinks": {
             "description": "Container for inline sitelinks",
             "type": "object",
             "properties": {
@@ -274,7 +1432,7 @@ const docTemplate = `{
                     "description": "List of inline sitelinks",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/handlers.Sitelink"
+                        "$ref": "#/definitions/webstar_noturno-leadgen-worker_internal_handlers.Sitelink"
                     }
                 }
             }

@@ -16,6 +16,7 @@ func NewRouter(
 	searchHandler *handlers.GoogleSearchHandler,
 	webhookController *controllers.WebhookController,
 	automationController *controllers.AutomationController,
+	reportsController *controllers.ReportsController,
 ) *gin.Engine {
 	router := gin.Default() // Includes Logger and Recovery middleware
 
@@ -36,6 +37,14 @@ func NewRouter(
 	v1 := router.Group("/api/v1")
 	{
 		v1.POST("/search", searchController.Search)
+
+		// Reports routes
+		if reportsController != nil {
+			v1.GET("/reports", reportsController.GetReports)
+			v1.GET("/reports/summary", reportsController.GetUsageSummary)
+			v1.GET("/reports/daily", reportsController.GetDailyUsage)
+			v1.GET("/reports/operations", reportsController.GetOperationStats)
+		}
 	}
 
 	// Webhook routes (authentication handled in controller via webhook secret)

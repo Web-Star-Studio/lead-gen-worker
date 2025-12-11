@@ -1,6 +1,82 @@
 basePath: /api/v1
 definitions:
-  dto.ErrorResponse:
+  webstar_noturno-leadgen-worker_internal_dto.AutomationTask:
+    properties:
+      business_profile_id:
+        type: string
+      completed_at:
+        type: string
+      created_at:
+        type: string
+      error_message:
+        type: string
+      id:
+        type: string
+      items_failed:
+        type: integer
+      items_processed:
+        type: integer
+      items_succeeded:
+        type: integer
+      items_total:
+        type: integer
+      lead_id:
+        description: Single lead
+        type: string
+      lead_ids:
+        description: Batch of leads
+        items:
+          type: string
+        type: array
+      max_retries:
+        type: integer
+      priority:
+        $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.TaskPriority'
+      retry_count:
+        type: integer
+      started_at:
+        type: string
+      status:
+        $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.TaskStatus'
+      task_type:
+        $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.TaskType'
+      user_id:
+        type: string
+    type: object
+  webstar_noturno-leadgen-worker_internal_dto.AutomationTaskCreate:
+    properties:
+      business_profile_id:
+        type: string
+      lead_id:
+        type: string
+      lead_ids:
+        items:
+          type: string
+        type: array
+      priority:
+        $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.TaskPriority'
+      task_type:
+        $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.TaskType'
+      user_id:
+        type: string
+    type: object
+  webstar_noturno-leadgen-worker_internal_dto.DailyUsage:
+    description: Usage statistics aggregated by day
+    properties:
+      date:
+        type: string
+      failed_calls:
+        type: integer
+      successful_calls:
+        type: integer
+      total_calls:
+        type: integer
+      total_cost_usd:
+        type: number
+      total_tokens:
+        type: integer
+    type: object
+  webstar_noturno-leadgen-worker_internal_dto.ErrorResponse:
     description: Error response returned when request fails
     properties:
       error:
@@ -9,7 +85,223 @@ definitions:
           on the ''required'' tag'
         type: string
     type: object
-  dto.SearchRequest:
+  webstar_noturno-leadgen-worker_internal_dto.Job:
+    properties:
+      business_profile:
+        description: ID of the business profile to use for personalization
+        type: string
+      completed_at:
+        type: string
+      created_at:
+        type: string
+      error_message:
+        type: string
+      excluded_domains:
+        items:
+          type: string
+        type: array
+      icp_id:
+        type: string
+      icp_name:
+        type: string
+      job_id:
+        type: string
+      lead_quantity:
+        type: integer
+      leads_generated:
+        type: integer
+      region:
+        type: string
+      required_fields:
+        items:
+          type: string
+        type: array
+      started_at:
+        type: string
+      status:
+        description: pending, processing, completed, failed
+        type: string
+      user_id:
+        type: string
+    type: object
+  webstar_noturno-leadgen-worker_internal_dto.Lead:
+    properties:
+      address:
+        type: string
+      company_name:
+        type: string
+      contact_name:
+        type: string
+      contact_role:
+        type: string
+      emails:
+        items:
+          type: string
+        type: array
+      extra_data:
+        $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.LeadExtraData'
+      id:
+        type: string
+      job_id:
+        type: string
+      phones:
+        items:
+          type: string
+        type: array
+      social_media:
+        additionalProperties:
+          type: string
+        type: object
+      source:
+        description: '"Google" or "cnpj"'
+        type: string
+      user_id:
+        type: string
+      website:
+        type: string
+    type: object
+  webstar_noturno-leadgen-worker_internal_dto.LeadExtraData:
+    properties:
+      capital:
+        type: string
+      cnae_code:
+        type: string
+      cnae_description:
+        type: string
+      cnpj:
+        type: string
+      company_size:
+        type: string
+      founded_at:
+        type: string
+      legal_nature:
+        type: string
+      mei_optante:
+        type: boolean
+      nome_fantasia:
+        type: string
+      partners:
+        items:
+          type: string
+        type: array
+      razao_social:
+        type: string
+      secondary_activities:
+        additionalProperties: true
+        type: object
+      simples_optante:
+        type: boolean
+      status:
+        type: string
+    type: object
+  webstar_noturno-leadgen-worker_internal_dto.LeadGenerationStats:
+    description: Statistics specific to lead generation pipeline
+    properties:
+      avg_cost_per_lead:
+        type: number
+      avg_leads_per_job:
+        type: number
+      total_emails_generated:
+        type: integer
+      total_jobs_processed:
+        type: integer
+      total_leads_generated:
+        type: integer
+      total_reports_generated:
+        type: integer
+    type: object
+  webstar_noturno-leadgen-worker_internal_dto.ModelUsage:
+    description: Usage statistics by AI model
+    properties:
+      avg_tokens_per_call:
+        type: number
+      model:
+        type: string
+      total_calls:
+        type: integer
+      total_cost_usd:
+        type: number
+      total_tokens:
+        type: integer
+    type: object
+  webstar_noturno-leadgen-worker_internal_dto.OperationStats:
+    description: Statistics for a specific AI operation type
+    properties:
+      avg_duration_ms:
+        type: number
+      failed_calls:
+        type: integer
+      operation_type:
+        $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.OperationType'
+      success_rate:
+        type: number
+      successful_calls:
+        type: integer
+      total_calls:
+        type: integer
+      total_cost_usd:
+        type: number
+      total_input_tokens:
+        type: integer
+      total_output_tokens:
+        type: integer
+      total_tokens:
+        type: integer
+    type: object
+  webstar_noturno-leadgen-worker_internal_dto.OperationType:
+    enum:
+    - data_extraction
+    - pre_call_report
+    - cold_email
+    - website_scraping
+    type: string
+    x-enum-varnames:
+    - OperationDataExtraction
+    - OperationPreCallReport
+    - OperationColdEmail
+    - OperationWebsiteScraping
+  webstar_noturno-leadgen-worker_internal_dto.ReportPeriod:
+    description: Time range covered by the report
+    properties:
+      days_count:
+        type: integer
+      end_date:
+        type: string
+      start_date:
+        type: string
+    type: object
+  webstar_noturno-leadgen-worker_internal_dto.ReportsResponse:
+    description: Complete reports response for dashboard visualization
+    properties:
+      by_model:
+        description: ByModel contains stats grouped by AI model
+        items:
+          $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.ModelUsage'
+        type: array
+      by_operation:
+        description: ByOperation contains stats grouped by operation type
+        items:
+          $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.OperationStats'
+        type: array
+      daily_usage:
+        description: DailyUsage contains usage over time
+        items:
+          $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.DailyUsage'
+        type: array
+      lead_generation:
+        allOf:
+        - $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.LeadGenerationStats'
+        description: LeadGeneration contains lead-specific metrics
+      period:
+        allOf:
+        - $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.ReportPeriod'
+        description: Period indicates the date range of the report
+      summary:
+        allOf:
+        - $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.UsageSummary'
+        description: Summary contains overall usage metrics
+    type: object
+  webstar_noturno-leadgen-worker_internal_dto.SearchRequest:
     description: Search request parameters for Google search
     properties:
       exclude_domains:
@@ -50,9 +342,177 @@ definitions:
     - location
     - q
     type: object
-  handlers.OrganicResult:
+  webstar_noturno-leadgen-worker_internal_dto.TaskPriority:
+    enum:
+    - 1
+    - 2
+    - 3
+    type: integer
+    x-enum-comments:
+      TaskPriorityHigh: Lead search jobs
+      TaskPriorityLow: Manual batch operations
+      TaskPriorityMedium: Auto-triggered enrichment
+    x-enum-descriptions:
+    - Lead search jobs
+    - Auto-triggered enrichment
+    - Manual batch operations
+    x-enum-varnames:
+    - TaskPriorityHigh
+    - TaskPriorityMedium
+    - TaskPriorityLow
+  webstar_noturno-leadgen-worker_internal_dto.TaskStatus:
+    enum:
+    - pending
+    - processing
+    - completed
+    - failed
+    type: string
+    x-enum-varnames:
+    - TaskStatusPending
+    - TaskStatusProcessing
+    - TaskStatusCompleted
+    - TaskStatusFailed
+  webstar_noturno-leadgen-worker_internal_dto.TaskType:
+    enum:
+    - lead_enrichment
+    - precall_generation
+    - email_generation
+    - full_enrichment
+    type: string
+    x-enum-comments:
+      TaskTypeEmailGeneration: Generate cold email
+      TaskTypeFullEnrichment: All of the above
+      TaskTypeLeadEnrichment: Scrape + Extract data
+      TaskTypePreCallGeneration: Generate pre-call report
+    x-enum-descriptions:
+    - Scrape + Extract data
+    - Generate pre-call report
+    - Generate cold email
+    - All of the above
+    x-enum-varnames:
+    - TaskTypeLeadEnrichment
+    - TaskTypePreCallGeneration
+    - TaskTypeEmailGeneration
+    - TaskTypeFullEnrichment
+  webstar_noturno-leadgen-worker_internal_dto.UsageSummary:
+    description: Overall usage summary with key metrics
+    properties:
+      avg_cost_per_call:
+        type: number
+      avg_duration_ms:
+        type: number
+      avg_tokens_per_call:
+        type: number
+      failed_calls:
+        type: integer
+      success_rate:
+        type: number
+      successful_calls:
+        type: integer
+      total_calls:
+        type: integer
+      total_cost_usd:
+        type: number
+      total_input_tokens:
+        type: integer
+      total_output_tokens:
+        type: integer
+      total_tokens:
+        type: integer
+    type: object
+  webstar_noturno-leadgen-worker_internal_handlers.ColdEmail:
+    description: Cold email generated by AI for first contact with a lead
+    properties:
+      body:
+        description: Body is the main email content (HTML or plain text)
+        type: string
+      call_to_action:
+        description: CallToAction is the specific action requested from the recipient
+        type: string
+      error:
+        description: Error contains the error message if email generation failed
+        type: string
+      generated_at:
+        description: GeneratedAt is the timestamp when the email was generated
+        type: string
+      lead_id:
+        description: LeadID is the ID of the lead this email is for
+        type: string
+      personalization_notes:
+        description: PersonalizationNotes explains how the email was personalized
+        type: string
+      plain_text_body:
+        description: PlainTextBody is the plain text version of the email
+        type: string
+      recipient_company:
+        description: RecipientCompany is the company of the recipient
+        type: string
+      recipient_name:
+        description: RecipientName is the name of the person receiving the email
+        type: string
+      subject:
+        description: Subject is the email subject line
+        type: string
+      success:
+        description: Success indicates whether the email was generated successfully
+        type: boolean
+      url:
+        description: URL of the website this email is for
+        type: string
+    type: object
+  webstar_noturno-leadgen-worker_internal_handlers.ExtractedData:
+    description: Company data extracted from website content
+    properties:
+      address:
+        description: Physical address if available
+        type: string
+      company:
+        description: Company name extracted from the website
+        type: string
+      contact:
+        description: Contact person name
+        type: string
+      contact_role:
+        description: Contact person role/position
+        type: string
+      emails:
+        description: Email addresses found (primary first)
+        items:
+          type: string
+        type: array
+      error:
+        description: Error contains error message if extraction failed
+        type: string
+      extracted_at:
+        description: ExtractedAt timestamp
+        type: string
+      phones:
+        description: Phone numbers found (primary first)
+        items:
+          type: string
+        type: array
+      social_media:
+        additionalProperties:
+          type: string
+        description: Social media links
+        type: object
+      success:
+        description: Success indicates whether extraction was successful
+        type: boolean
+      url:
+        description: URL of the source website
+        type: string
+      website:
+        description: Website (canonical URL)
+        type: string
+    type: object
+  webstar_noturno-leadgen-worker_internal_handlers.OrganicResult:
     description: A single organic search result from Google
     properties:
+      cold_email:
+        allOf:
+        - $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_handlers.ColdEmail'
+        description: ColdEmail contains the AI-generated cold email for first contact
       displayed_link:
         description: Displayed URL shown in search results
         example: www.example.com.br
@@ -65,6 +525,10 @@ definitions:
         items:
           type: string
         type: array
+      extracted_data:
+        allOf:
+        - $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_handlers.ExtractedData'
+        description: ExtractedData contains structured company data extracted by DataExtractorHandler
       link:
         description: URL of the search result
         example: https://www.example.com.br/
@@ -73,6 +537,10 @@ definitions:
         description: Position of the result in the search results
         example: 1
         type: integer
+      pre_call_report:
+        description: PreCallReport contains the AI-generated company summary for sales
+          calls
+        type: string
       rating:
         description: Rating score if available
         example: 4.8
@@ -90,7 +558,7 @@ definitions:
         type: string
       sitelinks:
         allOf:
-        - $ref: '#/definitions/handlers.Sitelinks'
+        - $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_handlers.Sitelinks'
         description: Sitelinks associated with this result
       snippet:
         description: Snippet/description of the search result
@@ -102,7 +570,7 @@ definitions:
         example: Escritório de Contabilidade em Recife - Contador em Recife
         type: string
     type: object
-  handlers.Pagination:
+  webstar_noturno-leadgen-worker_internal_handlers.Pagination:
     description: Pagination information for search results
     properties:
       current:
@@ -114,13 +582,13 @@ definitions:
         example: https://serpapi.com/search.json?engine=google&start=10
         type: string
     type: object
-  handlers.SearchResponse:
+  webstar_noturno-leadgen-worker_internal_handlers.SearchResponse:
     description: Response containing organic search results and pagination info
     properties:
       organic_results:
         description: List of organic search results
         items:
-          $ref: '#/definitions/handlers.OrganicResult'
+          $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_handlers.OrganicResult'
         type: array
       pages_fetched:
         description: Number of pages fetched to get these results
@@ -128,14 +596,14 @@ definitions:
         type: integer
       serpapi_pagination:
         allOf:
-        - $ref: '#/definitions/handlers.Pagination'
+        - $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_handlers.Pagination'
         description: Pagination information (for the last page fetched)
       total_results:
         description: Total number of results returned
         example: 50
         type: integer
     type: object
-  handlers.Sitelink:
+  webstar_noturno-leadgen-worker_internal_handlers.Sitelink:
     description: Inline sitelink with title and URL
     properties:
       link:
@@ -147,13 +615,13 @@ definitions:
         example: Contact Us
         type: string
     type: object
-  handlers.Sitelinks:
+  webstar_noturno-leadgen-worker_internal_handlers.Sitelinks:
     description: Container for inline sitelinks
     properties:
       inline:
         description: List of inline sitelinks
         items:
-          $ref: '#/definitions/handlers.Sitelink'
+          $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_handlers.Sitelink'
         type: array
     type: object
 host: localhost:8080
@@ -171,6 +639,175 @@ info:
   title: Lead Gen Worker API
   version: "1.0"
 paths:
+  /api/v1/reports:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves comprehensive usage reports including token usage, costs,
+        and lead generation metrics
+      parameters:
+      - description: User ID to get reports for
+        in: query
+        name: user_id
+        required: true
+        type: string
+      - description: Start date for the report period (RFC3339 format)
+        in: query
+        name: start_date
+        type: string
+      - description: End date for the report period (RFC3339 format)
+        in: query
+        name: end_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Usage reports
+          schema:
+            $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.ReportsResponse'
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get usage reports
+      tags:
+      - Reports
+  /api/v1/reports/daily:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves usage statistics aggregated by day for charts
+      parameters:
+      - description: User ID
+        in: query
+        name: user_id
+        required: true
+        type: string
+      - description: Start date (RFC3339 or YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: End date (RFC3339 or YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daily usage statistics
+          schema:
+            items:
+              $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.DailyUsage'
+            type: array
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get daily usage
+      tags:
+      - Reports
+  /api/v1/reports/operations:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves usage statistics grouped by AI operation type
+      parameters:
+      - description: User ID
+        in: query
+        name: user_id
+        required: true
+        type: string
+      - description: Start date (RFC3339 or YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: End date (RFC3339 or YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Operation statistics
+          schema:
+            items:
+              $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.OperationStats'
+            type: array
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get operation statistics
+      tags:
+      - Reports
+  /api/v1/reports/summary:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a quick summary of token usage and costs
+      parameters:
+      - description: User ID to get summary for
+        in: query
+        name: user_id
+        required: true
+        type: string
+      - description: Start date (RFC3339 or YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: End date (RFC3339 or YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Usage summary
+          schema:
+            $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.UsageSummary'
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get usage summary
+      tags:
+      - Reports
   /search:
     post:
       consumes:
@@ -183,25 +820,173 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/dto.SearchRequest'
+          $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.SearchRequest'
       produces:
       - application/json
       responses:
         "200":
           description: Successful search results
           schema:
-            $ref: '#/definitions/handlers.SearchResponse'
+            $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_handlers.SearchResponse'
         "400":
           description: Bad request - validation error
           schema:
-            $ref: '#/definitions/dto.ErrorResponse'
+            $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse'
         "500":
           description: Internal server error
           schema:
-            $ref: '#/definitions/dto.ErrorResponse'
+            $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse'
       summary: Search Google for leads
       tags:
       - search
+  /webhooks/automation-task:
+    post:
+      consumes:
+      - application/json
+      description: Receives webhook when a new automation task is created
+      parameters:
+      - description: Bearer token with webhook secret
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Automation task payload
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.AutomationTask'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Task accepted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse'
+      summary: Handle automation task webhook
+      tags:
+      - Webhooks
+  /webhooks/batch-enrichment:
+    post:
+      consumes:
+      - application/json
+      description: Manually trigger enrichment for a batch of leads
+      parameters:
+      - description: Bearer token with webhook secret
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Batch enrichment request
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.AutomationTaskCreate'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Batch accepted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse'
+      summary: Handle batch enrichment request
+      tags:
+      - Webhooks
+  /webhooks/job-created:
+    post:
+      consumes:
+      - application/json
+      description: Receives Supabase database webhook when a new job is created
+      parameters:
+      - description: Bearer token with webhook secret
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Job payload from Supabase
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.Job'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Webhook accepted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse'
+      summary: Handle job created webhook
+      tags:
+      - Webhooks
+  /webhooks/lead-created:
+    post:
+      consumes:
+      - application/json
+      description: Receives webhook when a new lead is created for auto-enrichment
+      parameters:
+      - description: Bearer token with webhook secret
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Lead payload
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.Lead'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lead accepted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/webstar_noturno-leadgen-worker_internal_dto.ErrorResponse'
+      summary: Handle lead created webhook
+      tags:
+      - Webhooks
 schemes:
 - http
 - https

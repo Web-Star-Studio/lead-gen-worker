@@ -518,3 +518,129 @@ Authorization: Bearer <webhook_secret>
 4. If enabled, creates and processes automation task
 5. Lead is enriched → Pre-call generated → Email generated
 6. User sees enriched lead in real-time via Supabase subscriptions
+
+## Reports & Usage Tracking
+
+The system tracks AI usage metrics for all operations, enabling comprehensive reporting for dashboards.
+
+### Usage Tracking
+
+All AI operations are tracked with the following metrics:
+- **Input/Output Tokens**: Estimated based on ~4 characters per token
+- **Cost Estimation**: Based on Gemini model pricing (per million tokens)
+- **Duration**: Time taken for each operation in milliseconds
+- **Success/Failure**: Status of each operation
+
+### Tracked Operations
+
+| Operation Type | Description |
+|----------------|-------------|
+| `data_extraction` | AI extraction of company data from scraped content |
+| `pre_call_report` | AI-generated pre-call sales reports |
+| `cold_email` | AI-generated cold emails |
+| `website_scraping` | Firecrawl website scraping operations |
+
+### Reports API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/v1/reports` | Complete reports for dashboard (summary, by operation, by model, daily, lead gen stats) |
+| `GET /api/v1/reports/summary` | Quick usage summary (tokens, costs, success rates) |
+| `GET /api/v1/reports/daily` | Daily usage statistics for charts |
+| `GET /api/v1/reports/operations` | Usage grouped by operation type |
+
+### Query Parameters
+
+All reports endpoints accept:
+- `user_id` (required): UUID of the user
+- `start_date` (optional): Start date (RFC3339 or YYYY-MM-DD format)
+- `end_date` (optional): End date (RFC3339 or YYYY-MM-DD format)
+
+Default period is last 30 days if no dates are specified.
+
+### Example Response (GET /api/v1/reports)
+
+```json
+{
+  "summary": {
+    "total_calls": 150,
+    "successful_calls": 145,
+    "failed_calls": 5,
+    "success_rate": 96.67,
+    "total_input_tokens": 450000,
+    "total_output_tokens": 75000,
+    "total_tokens": 525000,
+    "total_cost_usd": 0.125,
+    "avg_cost_per_call": 0.00083,
+    "avg_tokens_per_call": 3500,
+    "avg_duration_ms": 2500
+  },
+  "by_operation": [
+    {
+      "operation_type": "data_extraction",
+      "total_calls": 50,
+      "successful_calls": 48,
+      "failed_calls": 2,
+      "success_rate": 96.0,
+      "total_tokens": 150000,
+      "total_cost_usd": 0.03
+    }
+  ],
+  "by_model": [
+    {
+      "model": "gemini-2.5-flash",
+      "total_calls": 140,
+      "total_tokens": 500000,
+      "total_cost_usd": 0.10
+    }
+  ],
+  "daily_usage": [
+    {
+      "date": "2024-01-15",
+      "total_calls": 25,
+      "successful_calls": 24,
+      "total_tokens": 87500,
+      "total_cost_usd": 0.02
+    }
+  ],
+  "lead_generation": {
+    "total_jobs_processed": 10,
+    "total_leads_generated": 150,
+    "total_emails_generated": 120,
+    "total_reports_generated": 145,
+    "avg_leads_per_job": 15.0,
+    "avg_cost_per_lead": 0.00083
+  },
+  "period": {
+    "start_date": "2024-01-01",
+    "end_date": "2024-01-31",
+    "days_count": 30
+  }
+}
+```
+
+### Supabase Table: usage_metrics
+
+Stores detailed metrics for each AI operation:
+
+- `id` (uuid) - Primary key
+- `user_id` (uuid) - Foreign key to auth.users
+- `job_id` (uuid, optional) - Foreign key to jobs
+- `lead_id` (uuid, optional) - Foreign key to leads
+- `operation_type` (enum) - data_extraction, pre_call_report, cold_email, website_scraping
+- `model` (text) - AI model used (e.g., "gemini-2.5-flash")
+- `input_tokens` (int) - Estimated input tokens
+- `output_tokens` (int) - Estimated output tokens
+- `total_tokens` (int) - Total tokens used
+- `estimated_cost_usd` (decimal) - Estimated cost in USD
+- `duration_ms` (bigint) - Operation duration in milliseconds
+- `success` (boolean) - Whether operation succeeded
+- `error_message` (text, optional) - Error message if failed
+- `created_at` (timestamptz) - Timestamp
+
+### Model Pricing (per million tokens)
+
+| Model | Input Price | Output Price |
+|-------|-------------|--------------|
+| gemini-2.5-flash | $0.075 | $0.30 |
+| gemini-2.5-pro | $1.25 | $10.00 |

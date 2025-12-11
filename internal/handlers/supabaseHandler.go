@@ -568,3 +568,363 @@ func (h *SupabaseHandler) InsertAutomationTask(task *dto.AutomationTask) (string
 	log.Printf("[SupabaseHandler] Automation task inserted: id=%s", taskID)
 	return taskID, nil
 }
+
+// ============================================================================
+// USAGE METRICS AND REPORTS METHODS
+// ============================================================================
+
+// InsertUsageMetric inserts a usage metric record
+func (h *SupabaseHandler) InsertUsageMetric(metric *dto.UsageMetricInput) error {
+	log.Printf("[SupabaseHandler] InsertUsageMetric: user=%s, type=%s, tokens=%d",
+		metric.UserID, metric.OperationType, metric.TotalTokens)
+
+	insertData := map[string]interface{}{
+		"user_id":            metric.UserID,
+		"operation_type":     metric.OperationType,
+		"model":              metric.Model,
+		"input_tokens":       metric.InputTokens,
+		"output_tokens":      metric.OutputTokens,
+		"total_tokens":       metric.TotalTokens,
+		"estimated_cost_usd": metric.EstimatedCostUS,
+		"duration_ms":        metric.DurationMs,
+		"success":            metric.Success,
+	}
+
+	if metric.JobID != nil {
+		insertData["job_id"] = *metric.JobID
+	}
+	if metric.LeadID != nil {
+		insertData["lead_id"] = *metric.LeadID
+	}
+	if metric.ErrorMessage != nil {
+		insertData["error_message"] = *metric.ErrorMessage
+	}
+
+	_, _, err := h.client.From("usage_metrics").Insert(insertData, false, "", "", "").Execute()
+	if err != nil {
+		log.Printf("[SupabaseHandler] Failed to insert usage metric: %v", err)
+		return fmt.Errorf("failed to insert usage metric: %w", err)
+	}
+
+	return nil
+}
+
+// GetUsageSummary retrieves aggregated usage summary for a user
+func (h *SupabaseHandler) GetUsageSummary(userID string, startDate, endDate *time.Time) (*dto.UsageSummary, error) {
+	log.Printf("[SupabaseHandler] GetUsageSummary: user=%s", userID)
+
+	query := h.client.From("usage_metrics").
+		Select("*", "", false).
+		Eq("user_id", userID)
+
+	if startDate != nil {
+		query = query.Gte("created_at", startDate.Format(time.RFC3339))
+	}
+	if endDate != nil {
+		query = query.Lte("created_at", endDate.Format(time.RFC3339))
+	}
+
+	data, _, err := query.Execute()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get usage metrics: %w", err)
+	}
+
+	var metrics []dto.UsageMetric
+	if err := json.Unmarshal(data, &metrics); err != nil {
+		return nil, fmt.Errorf("failed to parse usage metrics: %w", err)
+	}
+
+	summary := &dto.UsageSummary{}
+	var totalDuration int64
+
+	for _, m := range metrics {
+		summary.TotalCalls++
+		if m.Success {
+			summary.SuccessfulCalls++
+		} else {
+			summary.FailedCalls++
+		}
+		summary.TotalInputTokens += m.InputTokens
+		summary.TotalOutputTokens += m.OutputTokens
+		summary.TotalTokens += m.TotalTokens
+		summary.TotalCostUSD += m.EstimatedCostUS
+		totalDuration += m.DurationMs
+	}
+
+	if summary.TotalCalls > 0 {
+		summary.SuccessRate = float64(summary.SuccessfulCalls) / float64(summary.TotalCalls) * 100
+		summary.AvgCostPerCall = summary.TotalCostUSD / float64(summary.TotalCalls)
+		summary.AvgTokensPerCall = float64(summary.TotalTokens) / float64(summary.TotalCalls)
+		summary.AvgDurationMs = float64(totalDuration) / float64(summary.TotalCalls)
+	}
+
+	return summary, nil
+}
+
+// GetUsageByOperation retrieves usage statistics grouped by operation type
+func (h *SupabaseHandler) GetUsageByOperation(userID string, startDate, endDate *time.Time) ([]dto.OperationStats, error) {
+	log.Printf("[SupabaseHandler] GetUsageByOperation: user=%s", userID)
+
+	query := h.client.From("usage_metrics").
+		Select("*", "", false).
+		Eq("user_id", userID)
+
+	if startDate != nil {
+		query = query.Gte("created_at", startDate.Format(time.RFC3339))
+	}
+	if endDate != nil {
+		query = query.Lte("created_at", endDate.Format(time.RFC3339))
+	}
+
+	data, _, err := query.Execute()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get usage metrics: %w", err)
+	}
+
+	var metrics []dto.UsageMetric
+	if err := json.Unmarshal(data, &metrics); err != nil {
+		return nil, fmt.Errorf("failed to parse usage metrics: %w", err)
+	}
+
+	// Group by operation type
+	statsMap := make(map[dto.OperationType]*dto.OperationStats)
+	durationMap := make(map[dto.OperationType]int64)
+
+	for _, m := range metrics {
+		stat, ok := statsMap[m.OperationType]
+		if !ok {
+			stat = &dto.OperationStats{OperationType: m.OperationType}
+			statsMap[m.OperationType] = stat
+		}
+
+		stat.TotalCalls++
+		if m.Success {
+			stat.SuccessfulCalls++
+		} else {
+			stat.FailedCalls++
+		}
+		stat.TotalInputTokens += m.InputTokens
+		stat.TotalOutputTokens += m.OutputTokens
+		stat.TotalTokens += m.TotalTokens
+		stat.TotalCostUSD += m.EstimatedCostUS
+		durationMap[m.OperationType] += m.DurationMs
+	}
+
+	var result []dto.OperationStats
+	for opType, stat := range statsMap {
+		if stat.TotalCalls > 0 {
+			stat.SuccessRate = float64(stat.SuccessfulCalls) / float64(stat.TotalCalls) * 100
+			stat.AvgDurationMs = float64(durationMap[opType]) / float64(stat.TotalCalls)
+		}
+		result = append(result, *stat)
+	}
+
+	return result, nil
+}
+
+// GetUsageByModel retrieves usage statistics grouped by model
+func (h *SupabaseHandler) GetUsageByModel(userID string, startDate, endDate *time.Time) ([]dto.ModelUsage, error) {
+	log.Printf("[SupabaseHandler] GetUsageByModel: user=%s", userID)
+
+	query := h.client.From("usage_metrics").
+		Select("*", "", false).
+		Eq("user_id", userID)
+
+	if startDate != nil {
+		query = query.Gte("created_at", startDate.Format(time.RFC3339))
+	}
+	if endDate != nil {
+		query = query.Lte("created_at", endDate.Format(time.RFC3339))
+	}
+
+	data, _, err := query.Execute()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get usage metrics: %w", err)
+	}
+
+	var metrics []dto.UsageMetric
+	if err := json.Unmarshal(data, &metrics); err != nil {
+		return nil, fmt.Errorf("failed to parse usage metrics: %w", err)
+	}
+
+	// Group by model
+	statsMap := make(map[string]*dto.ModelUsage)
+
+	for _, m := range metrics {
+		stat, ok := statsMap[m.Model]
+		if !ok {
+			stat = &dto.ModelUsage{Model: m.Model}
+			statsMap[m.Model] = stat
+		}
+
+		stat.TotalCalls++
+		stat.TotalTokens += m.TotalTokens
+		stat.TotalCostUSD += m.EstimatedCostUS
+	}
+
+	var result []dto.ModelUsage
+	for _, stat := range statsMap {
+		if stat.TotalCalls > 0 {
+			stat.AvgTokensPerCall = float64(stat.TotalTokens) / float64(stat.TotalCalls)
+		}
+		result = append(result, *stat)
+	}
+
+	return result, nil
+}
+
+// GetDailyUsage retrieves usage statistics aggregated by day
+func (h *SupabaseHandler) GetDailyUsage(userID string, startDate, endDate *time.Time) ([]dto.DailyUsage, error) {
+	log.Printf("[SupabaseHandler] GetDailyUsage: user=%s", userID)
+
+	query := h.client.From("usage_metrics").
+		Select("*", "", false).
+		Eq("user_id", userID)
+
+	if startDate != nil {
+		query = query.Gte("created_at", startDate.Format(time.RFC3339))
+	}
+	if endDate != nil {
+		query = query.Lte("created_at", endDate.Format(time.RFC3339))
+	}
+
+	data, _, err := query.Execute()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get usage metrics: %w", err)
+	}
+
+	var metrics []dto.UsageMetric
+	if err := json.Unmarshal(data, &metrics); err != nil {
+		return nil, fmt.Errorf("failed to parse usage metrics: %w", err)
+	}
+
+	// Group by date
+	statsMap := make(map[string]*dto.DailyUsage)
+
+	for _, m := range metrics {
+		dateStr := m.CreatedAt.Format("2006-01-02")
+		stat, ok := statsMap[dateStr]
+		if !ok {
+			stat = &dto.DailyUsage{Date: dateStr}
+			statsMap[dateStr] = stat
+		}
+
+		stat.TotalCalls++
+		if m.Success {
+			stat.SuccessfulCalls++
+		} else {
+			stat.FailedCalls++
+		}
+		stat.TotalTokens += m.TotalTokens
+		stat.TotalCostUSD += m.EstimatedCostUS
+	}
+
+	// Convert to sorted slice
+	var result []dto.DailyUsage
+	for _, stat := range statsMap {
+		result = append(result, *stat)
+	}
+
+	// Sort by date
+	for i := 0; i < len(result)-1; i++ {
+		for j := i + 1; j < len(result); j++ {
+			if result[i].Date > result[j].Date {
+				result[i], result[j] = result[j], result[i]
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// GetLeadGenerationStats retrieves lead generation specific statistics
+func (h *SupabaseHandler) GetLeadGenerationStats(userID string, startDate, endDate *time.Time) (*dto.LeadGenerationStats, error) {
+	log.Printf("[SupabaseHandler] GetLeadGenerationStats: user=%s", userID)
+
+	stats := &dto.LeadGenerationStats{}
+
+	// Get jobs count
+	jobQuery := h.client.From("jobs").
+		Select("id", "exact", false).
+		Eq("user_id", userID)
+
+	if startDate != nil {
+		jobQuery = jobQuery.Gte("created_at", startDate.Format(time.RFC3339))
+	}
+	if endDate != nil {
+		jobQuery = jobQuery.Lte("created_at", endDate.Format(time.RFC3339))
+	}
+
+	_, jobCount, err := jobQuery.Execute()
+	if err != nil {
+		log.Printf("[SupabaseHandler] Failed to get jobs count: %v", err)
+	} else {
+		stats.TotalJobsProcessed = int(jobCount)
+	}
+
+	// Get leads count
+	leadQuery := h.client.From("leads").
+		Select("id", "exact", false).
+		Eq("user_id", userID)
+
+	if startDate != nil {
+		leadQuery = leadQuery.Gte("created_at", startDate.Format(time.RFC3339))
+	}
+	if endDate != nil {
+		leadQuery = leadQuery.Lte("created_at", endDate.Format(time.RFC3339))
+	}
+
+	_, leadCount, err := leadQuery.Execute()
+	if err != nil {
+		log.Printf("[SupabaseHandler] Failed to get leads count: %v", err)
+	} else {
+		stats.TotalLeadsGenerated = int(leadCount)
+	}
+
+	// Get emails count
+	emailQuery := h.client.From("emails").
+		Select("id,lead_id", "exact", false)
+
+	// Join with leads to filter by user
+	emailData, emailCount, err := emailQuery.Execute()
+	if err != nil {
+		log.Printf("[SupabaseHandler] Failed to get emails count: %v", err)
+	} else {
+		stats.TotalEmailsGenerated = int(emailCount)
+		_ = emailData // Unused for now
+	}
+
+	// Get pre-call reports count from usage metrics
+	reportQuery := h.client.From("usage_metrics").
+		Select("id", "exact", false).
+		Eq("user_id", userID).
+		Eq("operation_type", string(dto.OperationPreCallReport)).
+		Eq("success", "true")
+
+	if startDate != nil {
+		reportQuery = reportQuery.Gte("created_at", startDate.Format(time.RFC3339))
+	}
+	if endDate != nil {
+		reportQuery = reportQuery.Lte("created_at", endDate.Format(time.RFC3339))
+	}
+
+	_, reportCount, err := reportQuery.Execute()
+	if err != nil {
+		log.Printf("[SupabaseHandler] Failed to get reports count: %v", err)
+	} else {
+		stats.TotalReportsGenerated = int(reportCount)
+	}
+
+	// Calculate averages
+	if stats.TotalJobsProcessed > 0 {
+		stats.AvgLeadsPerJob = float64(stats.TotalLeadsGenerated) / float64(stats.TotalJobsProcessed)
+	}
+
+	// Get total cost for cost per lead calculation
+	summary, err := h.GetUsageSummary(userID, startDate, endDate)
+	if err == nil && stats.TotalLeadsGenerated > 0 {
+		stats.AvgCostPerLead = summary.TotalCostUSD / float64(stats.TotalLeadsGenerated)
+	}
+
+	return stats, nil
+}
