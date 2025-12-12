@@ -201,7 +201,8 @@ func (h *FirecrawlHandler) ScrapeURLs(urls []string) []ScrapedPage {
 }
 
 // ScrapeOrganicResults takes organic search results and scrapes each website's homepage
-// Returns a map of URL -> ScrapedPage for easy lookup
+// Returns a map of original URL -> ScrapedPage for easy lookup
+// Note: URLs are normalized to root domain before scraping, but the map is keyed by original URL
 func (h *FirecrawlHandler) ScrapeOrganicResults(organicResults []OrganicResult) map[string]ScrapedPage {
 	log.Printf("[FirecrawlHandler] ScrapeOrganicResults called with %d results", len(organicResults))
 	if len(organicResults) == 0 {
@@ -209,33 +210,52 @@ func (h *FirecrawlHandler) ScrapeOrganicResults(organicResults []OrganicResult) 
 		return make(map[string]ScrapedPage)
 	}
 
-	// Extract unique URLs from organic results
+	// Extract unique URLs and track original -> normalized mapping
+	// Multiple original URLs may map to the same normalized (root) URL
 	urlSet := make(map[string]struct{})
+	normalizedToOriginals := make(map[string][]string) // normalized URL -> list of original URLs
 	var urls []string
+
 	for _, result := range organicResults {
 		if result.Link != "" {
 			if _, exists := urlSet[result.Link]; !exists {
 				urlSet[result.Link] = struct{}{}
 				urls = append(urls, result.Link)
+
+				// Track the mapping from normalized to original URLs
+				normalized, err := normalizeToRootURL(result.Link)
+				if err == nil && normalized != "" {
+					normalizedToOriginals[normalized] = append(normalizedToOriginals[normalized], result.Link)
+				}
 			}
 		}
 	}
 
-	log.Printf("[FirecrawlHandler] Scraping %d unique URLs", len(urls))
+	log.Printf("[FirecrawlHandler] Scraping %d unique URLs (may dedupe to fewer root domains)", len(urls))
 
-	// Scrape all URLs
+	// Scrape all URLs (they will be normalized internally)
 	scrapedPages := h.ScrapeURLs(urls)
 
-	// Build result map
-	resultMap := make(map[string]ScrapedPage, len(scrapedPages))
+	// Build result map keyed by ORIGINAL URLs (not normalized)
+	// This ensures the lookup in googleSearchHandler works correctly
+	resultMap := make(map[string]ScrapedPage, len(urls))
 	successCount := 0
+
 	for _, page := range scrapedPages {
+		// page.URL is the normalized URL, find all original URLs that map to it
+		if originals, exists := normalizedToOriginals[page.URL]; exists {
+			for _, originalURL := range originals {
+				resultMap[originalURL] = page
+			}
+		}
+		// Also add by normalized URL as fallback
 		resultMap[page.URL] = page
+
 		if page.Success {
 			successCount++
 		}
 	}
 
-	log.Printf("[FirecrawlHandler] Scraping complete: %d/%d successful", successCount, len(urls))
+	log.Printf("[FirecrawlHandler] Scraping complete: %d/%d successful", successCount, len(scrapedPages))
 	return resultMap
 }
