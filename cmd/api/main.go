@@ -95,9 +95,9 @@ func main() {
 		log.Printf("UsageTrackerHandler not initialized - usage tracking disabled (requires Supabase)")
 	}
 
-	// Initialize DataExtractorHandler if Google API key or Vertex AI is configured
+	// Initialize DataExtractorHandler if Google API key, Vertex AI, or OpenRouter is configured
 	var dataExtractorHandler *handlers.DataExtractorHandler
-	if cfg.GoogleAPIKey != "" || cfg.UseVertexAI {
+	if cfg.GoogleAPIKey != "" || cfg.UseVertexAI || cfg.UseOpenRouter {
 		// Debug: log first 10 chars of API key to verify correct key is loaded
 		if len(cfg.GoogleAPIKey) > 10 {
 			log.Printf("[DEBUG] GOOGLE_API_KEY loaded: %s...", cfg.GoogleAPIKey[:10])
@@ -134,9 +134,9 @@ func main() {
 		log.Printf("GOOGLE_API_KEY or Vertex AI not configured - data extraction disabled")
 	}
 
-	// Initialize PreCallReportHandler if Google API key or Vertex AI is configured
+	// Initialize PreCallReportHandler if Google API key, Vertex AI, or OpenRouter is configured
 	var preCallReportHandler *handlers.PreCallReportHandler
-	if cfg.GoogleAPIKey != "" || cfg.UseVertexAI {
+	if cfg.GoogleAPIKey != "" || cfg.UseVertexAI || cfg.UseOpenRouter {
 		var err error
 		preCallReportHandler, err = handlers.NewPreCallReportHandler(handlers.PreCallReportConfig{
 			APIKey:      cfg.GoogleAPIKey,
@@ -169,9 +169,9 @@ func main() {
 		log.Printf("GOOGLE_API_KEY or Vertex AI not configured - pre-call report generation disabled")
 	}
 
-	// Initialize ColdEmailHandler if Google API key or Vertex AI is configured
+	// Initialize ColdEmailHandler if Google API key, Vertex AI, or OpenRouter is configured
 	var coldEmailHandler *handlers.ColdEmailHandler
-	if cfg.GoogleAPIKey != "" || cfg.UseVertexAI {
+	if cfg.GoogleAPIKey != "" || cfg.UseVertexAI || cfg.UseOpenRouter {
 		var err error
 		coldEmailHandler, err = handlers.NewColdEmailHandler(handlers.ColdEmailConfig{
 			APIKey:      cfg.GoogleAPIKey,
