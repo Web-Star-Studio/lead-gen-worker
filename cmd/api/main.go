@@ -103,12 +103,17 @@ func main() {
 			log.Printf("[DEBUG] GOOGLE_API_KEY loaded: %s...", cfg.GoogleAPIKey[:10])
 		}
 		var err error
+		// Select model based on backend
+		model := cfg.GeminiModel
+		if cfg.UseOpenRouter {
+			model = cfg.OpenRouterModel
+		}
 		dataExtractorHandler, err = handlers.NewDataExtractorHandler(handlers.DataExtractorConfig{
 			APIKey:      cfg.GoogleAPIKey,
 			UseVertexAI: cfg.UseVertexAI,
 			GCPProject:  cfg.GCPProject,
 			GCPLocation: cfg.GCPLocation,
-			Model:       cfg.GeminiModel, // Uses GEMINI_MODEL env var, falls back to DefaultExtractorModel in handler
+			Model:       model,
 		})
 		if err != nil {
 			log.Printf("Warning: Failed to initialize DataExtractorHandler: %v", err)
@@ -138,9 +143,14 @@ func main() {
 	var preCallReportHandler *handlers.PreCallReportHandler
 	if cfg.GoogleAPIKey != "" || cfg.UseVertexAI || cfg.UseOpenRouter {
 		var err error
+		// Select model based on backend
+		model := cfg.GeminiModel
+		if cfg.UseOpenRouter {
+			model = cfg.OpenRouterModel
+		}
 		preCallReportHandler, err = handlers.NewPreCallReportHandler(handlers.PreCallReportConfig{
 			APIKey:      cfg.GoogleAPIKey,
-			Model:       cfg.GeminiModel,
+			Model:       model,
 			UseVertexAI: cfg.UseVertexAI,
 			GCPProject:  cfg.GCPProject,
 			GCPLocation: cfg.GCPLocation,
@@ -173,9 +183,14 @@ func main() {
 	var coldEmailHandler *handlers.ColdEmailHandler
 	if cfg.GoogleAPIKey != "" || cfg.UseVertexAI || cfg.UseOpenRouter {
 		var err error
+		// Select model based on backend
+		model := cfg.GeminiModel
+		if cfg.UseOpenRouter {
+			model = cfg.OpenRouterModel
+		}
 		coldEmailHandler, err = handlers.NewColdEmailHandler(handlers.ColdEmailConfig{
 			APIKey:      cfg.GoogleAPIKey,
-			Model:       cfg.GeminiModel, // Uses GEMINI_MODEL env var, falls back to DefaultEmailModel in handler
+			Model:       model,
 			UseVertexAI: cfg.UseVertexAI,
 			GCPProject:  cfg.GCPProject,
 			GCPLocation: cfg.GCPLocation,
