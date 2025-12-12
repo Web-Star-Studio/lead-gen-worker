@@ -210,7 +210,14 @@ func NewPreCallReportHandler(config PreCallReportConfig) (*PreCallReportHandler,
 
 	// Set default model based on backend
 	if config.Model == "" {
-		config.Model = provider.DefaultModel(backend)
+		// Try OpenRouter-specific env var first when using OpenRouter
+		if backend == provider.BackendOpenRouter {
+			config.Model = os.Getenv("OPENROUTER_MODEL")
+		}
+		// Fall back to default if still empty
+		if config.Model == "" {
+			config.Model = provider.DefaultModel(backend)
+		}
 	}
 	if config.FallbackModel == "" {
 		config.FallbackModel = provider.DefaultFallbackModel(backend)

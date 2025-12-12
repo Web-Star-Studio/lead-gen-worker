@@ -160,7 +160,10 @@ func NewDataExtractorHandler(config DataExtractorConfig) (*DataExtractorHandler,
 	// Set default model based on backend
 	if config.Model == "" {
 		if backend == provider.BackendOpenRouter {
-			config.Model = provider.DefaultModel(backend)
+			config.Model = os.Getenv("OPENROUTER_MODEL")
+			if config.Model == "" {
+				config.Model = provider.DefaultModel(backend)
+			}
 		} else {
 			config.Model = os.Getenv("GEMINI_MODEL")
 			if config.Model == "" {
