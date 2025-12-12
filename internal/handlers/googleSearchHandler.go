@@ -190,6 +190,32 @@ func (h *GoogleSearchHandler) SetLocation(location string) {
 	}
 }
 
+// SetUserContext sets the user and job context on all AI handlers for usage tracking
+func (h *GoogleSearchHandler) SetUserContext(userID string, jobID *string) {
+	if h.dataExtractorHandler != nil {
+		h.dataExtractorHandler.SetUserContext(userID, jobID)
+	}
+	if h.preCallReportHandler != nil {
+		h.preCallReportHandler.SetUserContext(userID, jobID)
+	}
+	if h.coldEmailHandler != nil {
+		h.coldEmailHandler.SetUserContext(userID, jobID)
+	}
+}
+
+// ClearUserContext clears the user context from all AI handlers
+func (h *GoogleSearchHandler) ClearUserContext() {
+	if h.dataExtractorHandler != nil {
+		h.dataExtractorHandler.ClearUserContext()
+	}
+	if h.preCallReportHandler != nil {
+		h.preCallReportHandler.ClearUserContext()
+	}
+	if h.coldEmailHandler != nil {
+		h.coldEmailHandler.ClearUserContext()
+	}
+}
+
 // getCanonicalLocation fetches the canonical location name from SerpAPI
 func (h *GoogleSearchHandler) getCanonicalLocation(location string) (string, error) {
 	// URL encode the location parameter

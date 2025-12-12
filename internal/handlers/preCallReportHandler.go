@@ -113,6 +113,9 @@ type PreCallReportHandler struct {
 	fallbackModel adkmodel.LLM
 	// Usage tracking
 	usageTracker *UsageTrackerHandler
+	// Current context for tracking
+	currentUserID string
+	currentJobID  *string
 }
 
 // SetBusinessProfile sets the business profile to use for personalizing reports
@@ -142,6 +145,18 @@ func (h *PreCallReportHandler) ClearBusinessProfile() {
 // SetUsageTracker sets the usage tracker for recording AI usage metrics
 func (h *PreCallReportHandler) SetUsageTracker(tracker *UsageTrackerHandler) {
 	h.usageTracker = tracker
+}
+
+// SetUserContext sets the current user and job context for usage tracking
+func (h *PreCallReportHandler) SetUserContext(userID string, jobID *string) {
+	h.currentUserID = userID
+	h.currentJobID = jobID
+}
+
+// ClearUserContext clears the user context after processing
+func (h *PreCallReportHandler) ClearUserContext() {
+	h.currentUserID = ""
+	h.currentJobID = nil
 }
 
 // NewPreCallReportHandler creates a new PreCallReportHandler instance
@@ -528,7 +543,7 @@ func (h *PreCallReportHandler) GenerateReport(ctx context.Context, result Organi
 		// Track failed generation
 		if h.usageTracker != nil {
 			errMsg := generationErr.Error()
-			h.usageTracker.TrackPreCallReport("system", nil, nil, modelUsed, prompt, "", startTime, false, &errMsg)
+			h.usageTracker.TrackPreCallReport(h.currentUserID, h.currentJobID, nil, modelUsed, prompt, "", startTime, false, &errMsg)
 		}
 		return report
 	}
@@ -539,7 +554,7 @@ func (h *PreCallReportHandler) GenerateReport(ctx context.Context, result Organi
 		// Track failed generation (empty response)
 		if h.usageTracker != nil {
 			errMsg := "empty response from AI"
-			h.usageTracker.TrackPreCallReport("system", nil, nil, modelUsed, prompt, "", startTime, false, &errMsg)
+			h.usageTracker.TrackPreCallReport(h.currentUserID, h.currentJobID, nil, modelUsed, prompt, "", startTime, false, &errMsg)
 		}
 		return report
 	}
@@ -550,7 +565,7 @@ func (h *PreCallReportHandler) GenerateReport(ctx context.Context, result Organi
 
 	// Track successful generation
 	if h.usageTracker != nil {
-		h.usageTracker.TrackPreCallReport("system", nil, nil, modelUsed, prompt, responseText, startTime, true, nil)
+		h.usageTracker.TrackPreCallReport(h.currentUserID, h.currentJobID, nil, modelUsed, prompt, responseText, startTime, true, nil)
 	}
 
 	log.Printf("[PreCallReportHandler] Successfully generated report for: %s", result.Link)

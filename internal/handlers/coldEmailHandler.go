@@ -108,6 +108,9 @@ type ColdEmailHandler struct {
 	fallbackModel adkmodel.LLM
 	// Usage tracking
 	usageTracker *UsageTrackerHandler
+	// Current context for tracking
+	currentUserID string
+	currentJobID  *string
 }
 
 // SetBusinessProfile sets the business profile to use for personalizing emails
@@ -137,6 +140,18 @@ func (h *ColdEmailHandler) ClearBusinessProfile() {
 // SetUsageTracker sets the usage tracker for recording AI usage metrics
 func (h *ColdEmailHandler) SetUsageTracker(tracker *UsageTrackerHandler) {
 	h.usageTracker = tracker
+}
+
+// SetUserContext sets the current user and job context for usage tracking
+func (h *ColdEmailHandler) SetUserContext(userID string, jobID *string) {
+	h.currentUserID = userID
+	h.currentJobID = jobID
+}
+
+// ClearUserContext clears the user context after processing
+func (h *ColdEmailHandler) ClearUserContext() {
+	h.currentUserID = ""
+	h.currentJobID = nil
 }
 
 // NewColdEmailHandler creates a new ColdEmailHandler instance
@@ -574,7 +589,7 @@ func (h *ColdEmailHandler) GenerateEmail(ctx context.Context, input EmailGenerat
 		// Track failed generation
 		if h.usageTracker != nil {
 			errMsg := generationErr.Error()
-			h.usageTracker.TrackColdEmail("system", nil, nil, modelUsed, prompt, "", startTime, false, &errMsg)
+			h.usageTracker.TrackColdEmail(h.currentUserID, h.currentJobID, nil, modelUsed, prompt, "", startTime, false, &errMsg)
 		}
 		return email
 	}
@@ -585,7 +600,7 @@ func (h *ColdEmailHandler) GenerateEmail(ctx context.Context, input EmailGenerat
 		// Track failed generation (empty response)
 		if h.usageTracker != nil {
 			errMsg := "empty response from AI"
-			h.usageTracker.TrackColdEmail("system", nil, nil, modelUsed, prompt, "", startTime, false, &errMsg)
+			h.usageTracker.TrackColdEmail(h.currentUserID, h.currentJobID, nil, modelUsed, prompt, "", startTime, false, &errMsg)
 		}
 		return email
 	}
@@ -596,7 +611,7 @@ func (h *ColdEmailHandler) GenerateEmail(ctx context.Context, input EmailGenerat
 
 	// Track successful generation
 	if h.usageTracker != nil {
-		h.usageTracker.TrackColdEmail("system", nil, nil, modelUsed, prompt, responseText, startTime, true, nil)
+		h.usageTracker.TrackColdEmail(h.currentUserID, h.currentJobID, nil, modelUsed, prompt, responseText, startTime, true, nil)
 	}
 
 	log.Printf("[ColdEmailHandler] Successfully generated email for: %s", input.Result.Link)

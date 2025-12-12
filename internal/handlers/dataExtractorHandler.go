@@ -103,6 +103,9 @@ type DataExtractorHandler struct {
 	fallbackModel adkmodel.LLM
 	// Usage tracking
 	usageTracker *UsageTrackerHandler
+	// Current context for tracking
+	currentUserID string
+	currentJobID  *string
 }
 
 // NewDataExtractorHandler creates a new DataExtractorHandler instance
@@ -317,6 +320,18 @@ func (h *DataExtractorHandler) SetUsageTracker(tracker *UsageTrackerHandler) {
 	h.usageTracker = tracker
 }
 
+// SetUserContext sets the current user and job context for usage tracking
+func (h *DataExtractorHandler) SetUserContext(userID string, jobID *string) {
+	h.currentUserID = userID
+	h.currentJobID = jobID
+}
+
+// ClearUserContext clears the user context after processing
+func (h *DataExtractorHandler) ClearUserContext() {
+	h.currentUserID = ""
+	h.currentJobID = nil
+}
+
 // isExtractorQuotaExceededError checks if the error is a quota exceeded (429) error
 func isExtractorQuotaExceededError(err error) bool {
 	if err == nil {
@@ -512,7 +527,7 @@ func (h *DataExtractorHandler) ExtractData(ctx context.Context, result OrganicRe
 		// Track failed extraction
 		if h.usageTracker != nil {
 			errMsg := extractionErr.Error()
-			h.usageTracker.TrackDataExtraction("system", nil, nil, modelUsed, prompt, "", startTime, false, &errMsg)
+			h.usageTracker.TrackDataExtraction(h.currentUserID, h.currentJobID, nil, modelUsed, prompt, "", startTime, false, &errMsg)
 		}
 		return extracted
 	}
@@ -537,7 +552,7 @@ func (h *DataExtractorHandler) ExtractData(ctx context.Context, result OrganicRe
 
 	// Track successful extraction
 	if h.usageTracker != nil {
-		h.usageTracker.TrackDataExtraction("system", nil, nil, modelUsed, prompt, responseText, startTime, true, nil)
+		h.usageTracker.TrackDataExtraction(h.currentUserID, h.currentJobID, nil, modelUsed, prompt, responseText, startTime, true, nil)
 	}
 
 	return extracted

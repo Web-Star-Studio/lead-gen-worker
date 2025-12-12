@@ -597,7 +597,14 @@ func (h *SupabaseHandler) InsertUsageMetric(metric *dto.UsageMetricInput) error 
 	log.Printf("[SupabaseHandler] InsertUsageMetric: user=%s, type=%s, tokens=%d",
 		metric.UserID, metric.OperationType, metric.TotalTokens)
 
+	// Skip tracking for system operations (user_id is required in DB)
+	if metric.UserID == "" || metric.UserID == "system" || !isValidUUID(metric.UserID) {
+		log.Printf("[SupabaseHandler] Skipping usage metric for non-user operation (user=%s)", metric.UserID)
+		return nil
+	}
+
 	insertData := map[string]interface{}{
+		"user_id":            metric.UserID,
 		"operation_type":     metric.OperationType,
 		"model":              metric.Model,
 		"input_tokens":       metric.InputTokens,
@@ -606,11 +613,6 @@ func (h *SupabaseHandler) InsertUsageMetric(metric *dto.UsageMetricInput) error 
 		"estimated_cost_usd": metric.EstimatedCostUS,
 		"duration_ms":        metric.DurationMs,
 		"success":            metric.Success,
-	}
-
-	// Only include user_id if it's a valid UUID (not "system" or other non-UUID values)
-	if metric.UserID != "" && metric.UserID != "system" && isValidUUID(metric.UserID) {
-		insertData["user_id"] = metric.UserID
 	}
 
 	if metric.JobID != nil {

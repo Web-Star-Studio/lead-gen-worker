@@ -42,6 +42,10 @@ func (p *JobProcessor) ProcessJob(ctx context.Context, job *dto.Job) {
 		p.searchHandler.SetLocation(job.Region)
 	}
 
+	// 2.5. Set user context for usage tracking
+	p.searchHandler.SetUserContext(job.UserID, &job.ID)
+	defer p.searchHandler.ClearUserContext()
+
 	// 3. Fetch Business Profile if business_profile is provided
 	var businessProfile *dto.BusinessProfile
 	if job.BusinessProfileID != nil && *job.BusinessProfileID != "" {
