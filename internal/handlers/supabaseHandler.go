@@ -598,7 +598,6 @@ func (h *SupabaseHandler) InsertUsageMetric(metric *dto.UsageMetricInput) error 
 		metric.UserID, metric.OperationType, metric.TotalTokens)
 
 	insertData := map[string]interface{}{
-		"user_id":            metric.UserID,
 		"operation_type":     metric.OperationType,
 		"model":              metric.Model,
 		"input_tokens":       metric.InputTokens,
@@ -607,6 +606,11 @@ func (h *SupabaseHandler) InsertUsageMetric(metric *dto.UsageMetricInput) error 
 		"estimated_cost_usd": metric.EstimatedCostUS,
 		"duration_ms":        metric.DurationMs,
 		"success":            metric.Success,
+	}
+
+	// Only include user_id if it's a valid UUID (not "system" or other non-UUID values)
+	if metric.UserID != "" && metric.UserID != "system" && isValidUUID(metric.UserID) {
+		insertData["user_id"] = metric.UserID
 	}
 
 	if metric.JobID != nil {
@@ -946,4 +950,24 @@ func (h *SupabaseHandler) GetLeadGenerationStats(userID string, startDate, endDa
 	}
 
 	return stats, nil
+}
+
+// isValidUUID checks if a string is a valid UUID format
+func isValidUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	// UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+	for i, c := range s {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if c != '-' {
+				return false
+			}
+		} else {
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				return false
+			}
+		}
+	}
+	return true
 }
