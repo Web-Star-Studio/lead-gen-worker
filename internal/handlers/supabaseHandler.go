@@ -288,22 +288,23 @@ func (h *SupabaseHandler) InsertLead(lead *dto.Lead) (string, error) {
 	return leadID, nil
 }
 
-// InsertPreCallReport inserts a pre-call report for a lead
+// InsertPreCallReport inserts or updates a pre-call report for a lead (UPSERT)
 func (h *SupabaseHandler) InsertPreCallReport(leadID, content string) error {
-	log.Printf("[SupabaseHandler] InsertPreCallReport: lead_id=%s", leadID)
+	log.Printf("[SupabaseHandler] InsertPreCallReport (upsert): lead_id=%s", leadID)
 
 	insertData := map[string]interface{}{
 		"lead_id": leadID,
 		"content": content,
 	}
 
-	_, _, err := h.client.From("pre_call_reports").Insert(insertData, false, "", "", "").Execute()
+	// Use upsert=true with onConflict="lead_id" to update if exists
+	_, _, err := h.client.From("pre_call_reports").Insert(insertData, true, "lead_id", "", "").Execute()
 	if err != nil {
-		log.Printf("[SupabaseHandler] Failed to insert pre-call report: %v", err)
-		return fmt.Errorf("failed to insert pre-call report: %w", err)
+		log.Printf("[SupabaseHandler] Failed to upsert pre-call report: %v", err)
+		return fmt.Errorf("failed to upsert pre-call report: %w", err)
 	}
 
-	log.Printf("[SupabaseHandler] Pre-call report inserted successfully")
+	log.Printf("[SupabaseHandler] Pre-call report upserted successfully")
 	return nil
 }
 
@@ -324,6 +325,25 @@ func (h *SupabaseHandler) LeadHasEmail(leadID string) (bool, error) {
 	}
 
 	return len(emails) > 0, nil
+}
+
+// LeadHasPreCallReport checks if a lead already has a pre-call report generated
+func (h *SupabaseHandler) LeadHasPreCallReport(leadID string) (bool, error) {
+	data, _, err := h.client.From("pre_call_reports").
+		Select("id", "exact", false).
+		Eq("lead_id", leadID).
+		Limit(1, "").
+		Execute()
+	if err != nil {
+		return false, fmt.Errorf("failed to check for existing pre-call report: %w", err)
+	}
+
+	var reports []map[string]interface{}
+	if err := json.Unmarshal(data, &reports); err != nil {
+		return false, fmt.Errorf("failed to parse pre-call check response: %w", err)
+	}
+
+	return len(reports) > 0, nil
 }
 
 // InsertColdEmail inserts a cold email for a lead into the emails table
@@ -482,6 +502,25 @@ func (h *SupabaseHandler) GetAutomationConfig(userID string) (*dto.AutomationCon
 	}
 
 	return &config, nil
+}
+
+// GetAutomationTaskStatus gets the current status of an automation task
+func (h *SupabaseHandler) GetAutomationTaskStatus(taskID string) (string, error) {
+	data, _, err := h.client.From("automation_tasks").
+		Select("status", "", false).
+		Eq("id", taskID).
+		Single().
+		Execute()
+	if err != nil {
+		return "", fmt.Errorf("failed to get automation task status: %w", err)
+	}
+
+	var result map[string]string
+	if err := json.Unmarshal(data, &result); err != nil {
+		return "", fmt.Errorf("failed to parse task status: %w", err)
+	}
+
+	return result["status"], nil
 }
 
 // UpdateAutomationTaskStatus updates the status and progress of an automation task

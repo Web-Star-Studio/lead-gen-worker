@@ -91,6 +91,21 @@ func NewAutomationProcessor(
 func (p *AutomationProcessor) ProcessTask(ctx context.Context, task *dto.AutomationTask) {
 	startTime := time.Now()
 
+	// Check if task is already being processed or completed (prevent duplicate processing)
+	currentStatus, err := p.supabase.GetAutomationTaskStatus(task.ID)
+	if err != nil {
+		automationLog.Warn("Could not verify task status, proceeding anyway", map[string]interface{}{
+			"task_id": task.ID,
+			"error":   err.Error(),
+		})
+	} else if currentStatus != "pending" {
+		automationLog.Info("Task already processed or in progress - skipping", map[string]interface{}{
+			"task_id":        task.ID,
+			"current_status": currentStatus,
+		})
+		return
+	}
+
 	automationLog.Info("═══════════════════════════════════════════════════════════", nil)
 	automationLog.Info("TASK STARTED", map[string]interface{}{
 		"task_id":             task.ID,
@@ -108,6 +123,20 @@ func (p *AutomationProcessor) ProcessTask(ctx context.Context, task *dto.Automat
 			"error":   err.Error(),
 		})
 		return
+	}
+
+	// Set user context on handlers for usage tracking
+	if p.dataExtractorHandler != nil {
+		p.dataExtractorHandler.SetUserContext(task.UserID, &task.ID)
+		defer p.dataExtractorHandler.ClearUserContext()
+	}
+	if p.preCallReportHandler != nil {
+		p.preCallReportHandler.SetUserContext(task.UserID, &task.ID)
+		defer p.preCallReportHandler.ClearUserContext()
+	}
+	if p.coldEmailHandler != nil {
+		p.coldEmailHandler.SetUserContext(task.UserID, &task.ID)
+		defer p.coldEmailHandler.ClearUserContext()
 	}
 
 	// Collect lead IDs to process
@@ -396,6 +425,22 @@ func (p *AutomationProcessor) processPreCallGeneration(ctx context.Context, lead
 // generatePreCallForLead generates a pre-call report for a single lead
 func (p *AutomationProcessor) generatePreCallForLead(ctx context.Context, leadID string) dto.EnrichmentResult {
 	result := dto.EnrichmentResult{LeadID: leadID}
+
+	// Check if lead already has a pre-call report (prevent duplicates)
+	hasPreCall, err := p.supabase.LeadHasPreCallReport(leadID)
+	if err != nil {
+		automationLog.Warn("Could not check for existing pre-call report, proceeding anyway", map[string]interface{}{
+			"lead_id": leadID,
+			"error":   err.Error(),
+		})
+	} else if hasPreCall {
+		automationLog.Info("Lead already has pre-call report - skipping generation", map[string]interface{}{
+			"lead_id": leadID,
+		})
+		result.Success = true
+		result.PreCall = true
+		return result
+	}
 
 	// Get lead data
 	lead, err := p.supabase.GetLeadByID(leadID)
