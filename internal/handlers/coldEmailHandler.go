@@ -704,8 +704,22 @@ func (h *ColdEmailHandler) buildPortugueseEmailPrompt(input EmailGenerationInput
 		}
 	}
 
-	prompt += "\n**IMPORTANTE**: Crie um email altamente personalizado EM PORTUGUÊS usando os dados acima. O email deve parecer que foi escrito especificamente para este prospect, não um template genérico."
-	prompt += "\n\nUse o formato: ASSUNTO: ... / CORPO: ... / CTA: ... / NOTAS DE PERSONALIZAÇÃO: ..."
+	prompt += `
+
+**REGRAS OBRIGATÓRIAS**:
+1. NUNCA use placeholders como [Seu Nome], [Website], [Seu Cargo], [Telefone], [WhatsApp] ou similares
+2. Use APENAS as informações reais fornecidas acima (nome do remetente, empresa, etc.)
+3. O email deve fluir naturalmente como um texto contínuo, SEM separar em seções como "CTA:" ou "NOTAS:"
+4. NUNCA adicione "NOTAS DE PERSONALIZAÇÃO" ou qualquer seção de notas ao final
+5. NUNCA inicie o email com caracteres especiais como ** ou ##
+6. A assinatura deve usar APENAS os dados reais fornecidos - se não tiver telefone, não inclua
+7. O call-to-action deve estar integrado naturalmente no corpo do email, não separado
+
+**FORMATO DE RESPOSTA**:
+ASSUNTO: [linha de assunto aqui]
+CORPO: [email completo aqui, incluindo saudação, conteúdo, CTA integrado e assinatura com dados reais]
+
+**IMPORTANTE**: Crie um email altamente personalizado EM PORTUGUÊS. O email deve parecer que foi escrito especificamente para este prospect, não um template genérico.`
 
 	return prompt
 }
@@ -774,8 +788,22 @@ func (h *ColdEmailHandler) buildEnglishEmailPrompt(input EmailGenerationInput) s
 		}
 	}
 
-	prompt += "\n**IMPORTANT**: Create a highly personalized email IN ENGLISH using the data above. The email should look like it was written specifically for this prospect, not a generic template."
-	prompt += "\n\nUse the format: SUBJECT: ... / BODY: ... / CTA: ... / PERSONALIZATION NOTES: ..."
+	prompt += `
+
+**MANDATORY RULES**:
+1. NEVER use placeholders like [Your Name], [Website], [Your Title], [Phone], [WhatsApp] or similar
+2. Use ONLY the real information provided above (sender name, company, etc.)
+3. The email must flow naturally as continuous text, WITHOUT separating into sections like "CTA:" or "NOTES:"
+4. NEVER add "PERSONALIZATION NOTES" or any notes section at the end
+5. NEVER start the email with special characters like ** or ##
+6. The signature must use ONLY the real data provided - if no phone, don't include it
+7. The call-to-action must be naturally integrated into the email body, not separated
+
+**RESPONSE FORMAT**:
+SUBJECT: [subject line here]
+BODY: [complete email here, including greeting, content, integrated CTA and signature with real data]
+
+**IMPORTANT**: Create a highly personalized email IN ENGLISH. The email should look like it was written specifically for this prospect, not a generic template.`
 
 	return prompt
 }
