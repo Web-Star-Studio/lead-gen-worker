@@ -712,14 +712,16 @@ func (h *ColdEmailHandler) buildPortugueseEmailPrompt(input EmailGenerationInput
 3. O email deve fluir naturalmente como um texto contínuo, SEM separar em seções como "CTA:" ou "NOTAS:"
 4. NUNCA adicione "NOTAS DE PERSONALIZAÇÃO" ou qualquer seção de notas ao final
 5. NUNCA inicie o email com caracteres especiais como ** ou ##
-6. A assinatura deve usar APENAS os dados reais fornecidos - se não tiver telefone, não inclua
-7. O call-to-action deve estar integrado naturalmente no corpo do email, não separado
+6. O call-to-action deve estar integrado naturalmente no corpo do email, não separado
+7. NÃO inclua rodapé, assinatura ou despedida (sem "Atenciosamente", "Cordialmente", nome, cargo, telefone, etc.)
+8. O email deve terminar com o call-to-action ou uma pergunta, SEM assinatura
+9. O email deve ter NO MÁXIMO 3 parágrafos curtos - seja conciso e direto
 
 **FORMATO DE RESPOSTA**:
-ASSUNTO: [linha de assunto aqui]
-CORPO: [email completo aqui, incluindo saudação, conteúdo, CTA integrado e assinatura com dados reais]
+ASSUNTO: [apenas uma linha curta de assunto]
+CORPO: [email completo aqui - saudação, conteúdo e CTA integrado - SEM rodapé/assinatura]
 
-**IMPORTANTE**: Crie um email altamente personalizado EM PORTUGUÊS. O email deve parecer que foi escrito especificamente para este prospect, não um template genérico.`
+**IMPORTANTE**: O ASSUNTO deve ser APENAS uma linha curta. O CORPO não deve ter assinatura no final.`
 
 	return prompt
 }
@@ -796,14 +798,16 @@ func (h *ColdEmailHandler) buildEnglishEmailPrompt(input EmailGenerationInput) s
 3. The email must flow naturally as continuous text, WITHOUT separating into sections like "CTA:" or "NOTES:"
 4. NEVER add "PERSONALIZATION NOTES" or any notes section at the end
 5. NEVER start the email with special characters like ** or ##
-6. The signature must use ONLY the real data provided - if no phone, don't include it
-7. The call-to-action must be naturally integrated into the email body, not separated
+6. The call-to-action must be naturally integrated into the email body, not separated
+7. DO NOT include footer, signature or closing (no "Best regards", "Sincerely", name, title, phone, etc.)
+8. The email must end with the call-to-action or a question, WITHOUT signature
+9. The email must have AT MOST 3 short paragraphs - be concise and direct
 
 **RESPONSE FORMAT**:
-SUBJECT: [subject line here]
-BODY: [complete email here, including greeting, content, integrated CTA and signature with real data]
+SUBJECT: [only a short subject line]
+BODY: [complete email here - greeting, content and integrated CTA - NO footer/signature]
 
-**IMPORTANT**: Create a highly personalized email IN ENGLISH. The email should look like it was written specifically for this prospect, not a generic template.`
+**IMPORTANT**: SUBJECT must be ONLY a short line. BODY must NOT have signature at the end.`
 
 	return prompt
 }
@@ -849,6 +853,17 @@ func extractEmailSection(response, sectionName string) string {
 		"**" + sectionName + "**",
 	}
 
+	// Section markers that indicate the end of current section
+	nextSectionMarkers := []string{
+		"\nCORPO:", "\nCORPO :", "\n**CORPO**:",
+		"\nBODY:", "\nBODY :", "\n**BODY**:",
+		"\nASSUNTO:", "\nASSUNTO :", "\n**ASSUNTO**:",
+		"\nSUBJECT:", "\nSUBJECT :", "\n**SUBJECT**:",
+		"\nCTA:", "\nCTA :",
+		"\nNOTAS", "\nPERSONALIZATION",
+		"\n---",
+	}
+
 	for _, pattern := range patterns {
 		idx := findCaseInsensitive(response, pattern)
 		if idx != -1 {
@@ -858,18 +873,13 @@ func extractEmailSection(response, sectionName string) string {
 				start++
 			}
 
-			// Find the end (next section marker or ---)
+			// Find the end (next section marker)
 			end := len(response)
-			// Look for --- separator
-			sepIdx := -1
-			for i := start; i < len(response)-2; i++ {
-				if response[i] == '-' && response[i+1] == '-' && response[i+2] == '-' {
-					sepIdx = i
-					break
+			for _, marker := range nextSectionMarkers {
+				markerIdx := findCaseInsensitive(response[start:], marker)
+				if markerIdx != -1 && (start+markerIdx) < end {
+					end = start + markerIdx
 				}
-			}
-			if sepIdx != -1 {
-				end = sepIdx
 			}
 
 			value := response[start:end]
