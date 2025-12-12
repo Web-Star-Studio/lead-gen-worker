@@ -30,9 +30,7 @@ func TestBuildEmailAgentInstruction(t *testing.T) {
 		instruction := buildEmailAgentInstruction("")
 		assert.Contains(t, instruction, "B2B copywriting and sales expert")
 		assert.Contains(t, instruction, "MUST have at least 2 paragraphs")
-		assert.Contains(t, instruction, "professional greeting")
-		assert.Contains(t, instruction, "Olá!")
-		assert.Contains(t, instruction, "Hi there!")
+		assert.Contains(t, instruction, "Olá, tudo bem?")
 		assert.NotContains(t, instruction, "Additional Instructions")
 	})
 
@@ -46,10 +44,10 @@ func TestBuildEmailAgentInstruction(t *testing.T) {
 
 	t.Run("greeting instructions", func(t *testing.T) {
 		instruction := buildEmailAgentInstruction("")
-		// Should NOT use direct names or time-based greetings
-		assert.Contains(t, instruction, "does NOT use the recipient's name directly")
-		assert.Contains(t, instruction, "Bom dia")
-		assert.Contains(t, instruction, "Good morning")
+		// Should use "Olá, tudo bem?" greeting
+		assert.Contains(t, instruction, "Olá, tudo bem?")
+		assert.Contains(t, instruction, "If the contact name is provided")
+		assert.Contains(t, instruction, "If NO contact name is available")
 	})
 
 	t.Run("paragraph requirements", func(t *testing.T) {

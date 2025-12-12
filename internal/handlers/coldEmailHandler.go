@@ -371,8 +371,9 @@ EMAIL STRUCTURE:
 
 **EMAIL BODY** (MUST have at least 2 paragraphs):
 1. **First paragraph - Greeting + Personalized opening** (2-3 sentences): 
-   - Start with a professional greeting that does NOT use the recipient's name directly or time-based greetings (avoid "Bom dia", "Good morning", "Olá João", etc.)
-   - Good examples: "Olá!", "Tudo bem?", "Hi there!", "Hope you're doing well!"
+   - ALWAYS start with "Olá, tudo bem?" as the greeting
+   - If the contact name is provided in the data, use it after the greeting: "Olá [Nome], tudo bem?"
+   - If NO contact name is available, just use: "Olá, tudo bem?" (DO NOT use any placeholder or generic term)
    - Follow with something specific about the company (service, achievement, industry challenge)
 2. **Second paragraph - Value connection + CTA** (2-4 sentences): 
    - Connect their problem/opportunity with your solution
@@ -381,8 +382,9 @@ EMAIL STRUCTURE:
 
 IMPORTANT RULES:
 - Use professional but human tone (not robotic)
-- Personalize with specific prospect data (name, company, sector), but don't use placeholders like "[name]" or "[company]" or "[sector]"
-- Never use overly formal greetings - use first name
+- Personalize with specific prospect data (name, company, sector), but NEVER use placeholders like "[name]" or "[company]" or "[sector]"
+- If contact name is available, use their first name naturally in the greeting
+- If contact name is NOT available, simply omit the name entirely - do not insert placeholders or generic terms
 - DO NOT include signature, closing salutation, or footer (e.g., "Best regards", "[Your Name]", company name). The signature will be automatically added by the sending system.
 - Don't use excessive emojis
 - Avoid attachments or suspicious links in the first message
