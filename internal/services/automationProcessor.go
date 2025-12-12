@@ -535,6 +535,22 @@ func (p *AutomationProcessor) processEmailGeneration(ctx context.Context, leadID
 func (p *AutomationProcessor) generateEmailForLead(ctx context.Context, leadID string, profile *dto.BusinessProfile) dto.EnrichmentResult {
 	result := dto.EnrichmentResult{LeadID: leadID}
 
+	// Check if lead already has an email (prevent duplicates)
+	hasEmail, err := p.supabase.LeadHasEmail(leadID)
+	if err != nil {
+		automationLog.Warn("Could not check for existing email, proceeding anyway", map[string]interface{}{
+			"lead_id": leadID,
+			"error":   err.Error(),
+		})
+	} else if hasEmail {
+		automationLog.Info("Lead already has email - skipping generation", map[string]interface{}{
+			"lead_id": leadID,
+		})
+		result.Success = true
+		result.Email = true
+		return result
+	}
+
 	// Get lead data
 	lead, err := p.supabase.GetLeadByID(leadID)
 	if err != nil {

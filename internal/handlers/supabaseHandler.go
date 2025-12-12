@@ -307,6 +307,25 @@ func (h *SupabaseHandler) InsertPreCallReport(leadID, content string) error {
 	return nil
 }
 
+// LeadHasEmail checks if a lead already has an email generated
+func (h *SupabaseHandler) LeadHasEmail(leadID string) (bool, error) {
+	data, _, err := h.client.From("emails").
+		Select("id", "exact", false).
+		Eq("lead_id", leadID).
+		Limit(1, "").
+		Execute()
+	if err != nil {
+		return false, fmt.Errorf("failed to check for existing email: %w", err)
+	}
+
+	var emails []map[string]interface{}
+	if err := json.Unmarshal(data, &emails); err != nil {
+		return false, fmt.Errorf("failed to parse email check response: %w", err)
+	}
+
+	return len(emails) > 0, nil
+}
+
 // InsertColdEmail inserts a cold email for a lead into the emails table
 func (h *SupabaseHandler) InsertColdEmail(email *dto.ColdEmailRecord) (string, error) {
 	log.Printf("[SupabaseHandler] InsertColdEmail: lead_id=%s, subject=%s", email.LeadID, email.Subject)

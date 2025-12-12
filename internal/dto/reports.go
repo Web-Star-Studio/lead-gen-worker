@@ -157,9 +157,10 @@ type TokenPricing struct {
 	OutputPricePerMTok float64 // Price per million output tokens
 }
 
-// DefaultTokenPricing returns pricing for common Gemini models
+// DefaultTokenPricing returns pricing for supported models (Gemini + OpenRouter)
 func DefaultTokenPricing() map[string]TokenPricing {
 	return map[string]TokenPricing{
+		// Google Gemini models (direct API)
 		"gemini-2.5-flash": {
 			Model:              "gemini-2.5-flash",
 			InputPricePerMTok:  0.075,
@@ -174,6 +175,22 @@ func DefaultTokenPricing() map[string]TokenPricing {
 			Model:              "gemini-2.5-pro-preview-06-05",
 			InputPricePerMTok:  1.25,
 			OutputPricePerMTok: 10.00,
+		},
+		// OpenRouter models
+		"openai/gpt-5.2-chat": {
+			Model:              "openai/gpt-5.2-chat",
+			InputPricePerMTok:  1.75,
+			OutputPricePerMTok: 14.00,
+		},
+		"google/gemini-2.5-flash": {
+			Model:              "google/gemini-2.5-flash",
+			InputPricePerMTok:  0.30,
+			OutputPricePerMTok: 2.50,
+		},
+		"google/gemini-3-pro-preview": {
+			Model:              "google/gemini-3-pro-preview",
+			InputPricePerMTok:  2.00,
+			OutputPricePerMTok: 12.00,
 		},
 	}
 }

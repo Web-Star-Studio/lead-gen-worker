@@ -19,6 +19,11 @@ type Config struct {
 	UseVertexAI  bool   // Use Vertex AI backend instead of Google AI Studio
 	GCPProject   string // Google Cloud project ID (for Vertex AI)
 	GCPLocation  string // Google Cloud location (for Vertex AI, e.g., "us-central1")
+	// OpenRouter configuration (alternative to Google AI)
+	UseOpenRouter     bool   // Use OpenRouter instead of Google AI
+	OpenRouterAPIKey  string // OpenRouter API key
+	OpenRouterModel   string // OpenRouter model (e.g., "anthropic/claude-3.5-sonnet", "openai/gpt-4o")
+	OpenRouterBaseURL string // Optional: custom OpenRouter base URL
 }
 
 // getEnvWithFallback returns the value of the primary env var, or fallback if primary is empty
@@ -49,5 +54,10 @@ func Load() *Config {
 		UseVertexAI:     os.Getenv("GOOGLE_GENAI_USE_VERTEXAI") == "true", // Optional
 		GCPProject:      os.Getenv("GOOGLE_CLOUD_PROJECT"),                // For Vertex AI
 		GCPLocation:     os.Getenv("GOOGLE_CLOUD_LOCATION"),               // For Vertex AI
+		// OpenRouter configuration
+		UseOpenRouter:     os.Getenv("USE_OPENROUTER") == "true",
+		OpenRouterAPIKey:  os.Getenv("OPENROUTER_API_KEY"),
+		OpenRouterModel:   os.Getenv("OPENROUTER_MODEL"),
+		OpenRouterBaseURL: os.Getenv("OPENROUTER_BASE_URL"), // Optional, defaults to https://openrouter.ai/api/v1
 	}
 }

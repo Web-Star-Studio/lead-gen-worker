@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"webstar/noturno-leadgen-worker/internal/dto"
+	"webstar/noturno-leadgen-worker/internal/model/provider"
 
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
+	adkmodel "google.golang.org/adk/model"
 	"google.golang.org/adk/model/gemini"
 	"google.golang.org/adk/runner"
 	"google.golang.org/adk/session"
@@ -84,6 +86,12 @@ type PreCallReportConfig struct {
 	GCPProject string
 	// GCPLocation is the Google Cloud location/region (for Vertex AI backend, e.g., "us-central1")
 	GCPLocation string
+	// UseOpenRouter enables OpenRouter backend instead of Google AI
+	UseOpenRouter bool
+	// OpenRouterAPIKey is the OpenRouter API key
+	OpenRouterAPIKey string
+	// OpenRouterBaseURL is the custom OpenRouter base URL (optional)
+	OpenRouterBaseURL string
 }
 
 // PreCallReportHandler handles generating pre-call reports using Google ADK
@@ -99,6 +107,10 @@ type PreCallReportHandler struct {
 	fallbackAgent  agent.Agent
 	fallbackRunner *runner.Runner
 	clientConfig   *genai.ClientConfig
+	// Provider backend
+	backend       provider.Backend
+	primaryModel  adkmodel.LLM
+	fallbackModel adkmodel.LLM
 	// Usage tracking
 	usageTracker *UsageTrackerHandler
 }
@@ -134,6 +146,17 @@ func (h *PreCallReportHandler) SetUsageTracker(tracker *UsageTrackerHandler) {
 
 // NewPreCallReportHandler creates a new PreCallReportHandler instance
 func NewPreCallReportHandler(config PreCallReportConfig) (*PreCallReportHandler, error) {
+	// Check for OpenRouter configuration from env vars
+	if os.Getenv("USE_OPENROUTER") == "true" {
+		config.UseOpenRouter = true
+	}
+	if config.OpenRouterAPIKey == "" {
+		config.OpenRouterAPIKey = os.Getenv("OPENROUTER_API_KEY")
+	}
+	if config.OpenRouterBaseURL == "" {
+		config.OpenRouterBaseURL = os.Getenv("OPENROUTER_BASE_URL")
+	}
+
 	// Check for Vertex AI configuration from env vars
 	if os.Getenv("GOOGLE_GENAI_USE_VERTEXAI") == "true" {
 		config.UseVertexAI = true
@@ -145,16 +168,23 @@ func NewPreCallReportHandler(config PreCallReportConfig) (*PreCallReportHandler,
 		config.GCPLocation = os.Getenv("GOOGLE_CLOUD_LOCATION")
 	}
 
+	// Determine backend
+	backend := provider.DetectBackend(config.UseOpenRouter, config.UseVertexAI)
+
 	// Validate configuration based on backend
-	if config.UseVertexAI {
+	switch backend {
+	case provider.BackendOpenRouter:
+		if config.OpenRouterAPIKey == "" {
+			return nil, fmt.Errorf("OpenRouter API key is required (set OPENROUTER_API_KEY env var or provide in config)")
+		}
+	case provider.BackendVertexAI:
 		if config.GCPProject == "" {
 			return nil, fmt.Errorf("GCP Project is required for Vertex AI (set GOOGLE_CLOUD_PROJECT env var or provide GCPProject in config)")
 		}
 		if config.GCPLocation == "" {
 			return nil, fmt.Errorf("GCP Location is required for Vertex AI (set GOOGLE_CLOUD_LOCATION env var or provide GCPLocation in config)")
 		}
-	} else {
-		// Google AI Studio backend requires API key
+	default: // BackendGemini
 		if config.APIKey == "" {
 			config.APIKey = os.Getenv("GOOGLE_API_KEY")
 		}
@@ -163,11 +193,12 @@ func NewPreCallReportHandler(config PreCallReportConfig) (*PreCallReportHandler,
 		}
 	}
 
+	// Set default model based on backend
 	if config.Model == "" {
-		config.Model = DefaultGeminiModel
+		config.Model = provider.DefaultModel(backend)
 	}
 	if config.FallbackModel == "" {
-		config.FallbackModel = DefaultReportFallbackModel
+		config.FallbackModel = provider.DefaultFallbackModel(backend)
 	}
 	if config.Timeout == 0 {
 		config.Timeout = DefaultReportTimeout
@@ -178,9 +209,20 @@ func NewPreCallReportHandler(config PreCallReportConfig) (*PreCallReportHandler,
 
 	ctx := context.Background()
 
-	// Build client config based on backend
+	// Create model using provider abstraction
+	var llm adkmodel.LLM
 	var clientConfig *genai.ClientConfig
-	if config.UseVertexAI {
+	var err error
+
+	if backend == provider.BackendOpenRouter {
+		log.Printf("[PreCallReportHandler] Initializing with OpenRouter backend (model: %s)", config.Model)
+		llm, err = provider.NewModel(ctx, provider.Config{
+			Backend:           backend,
+			Model:             config.Model,
+			OpenRouterAPIKey:  config.OpenRouterAPIKey,
+			OpenRouterBaseURL: config.OpenRouterBaseURL,
+		})
+	} else if backend == provider.BackendVertexAI {
 		log.Printf("[PreCallReportHandler] Initializing with Vertex AI backend (project: %s, location: %s, model: %s)",
 			config.GCPProject, config.GCPLocation, config.Model)
 		clientConfig = &genai.ClientConfig{
@@ -188,19 +230,19 @@ func NewPreCallReportHandler(config PreCallReportConfig) (*PreCallReportHandler,
 			Location: config.GCPLocation,
 			Backend:  genai.BackendVertexAI,
 		}
+		llm, err = gemini.NewModel(ctx, config.Model, clientConfig)
 	} else {
 		log.Printf("[PreCallReportHandler] Initializing with Google AI Studio backend (model: %s)", config.Model)
 		clientConfig = &genai.ClientConfig{
 			APIKey:  config.APIKey,
 			Backend: genai.BackendGeminiAPI,
 		}
+		llm, err = gemini.NewModel(ctx, config.Model, clientConfig)
 	}
 
-	// Create Gemini model
-	model, err := gemini.NewModel(ctx, config.Model, clientConfig)
 	if err != nil {
-		log.Printf("[PreCallReportHandler] Failed to create Gemini model: %v", err)
-		return nil, fmt.Errorf("failed to create Gemini model: %w", err)
+		log.Printf("[PreCallReportHandler] Failed to create model: %v", err)
+		return nil, fmt.Errorf("failed to create model: %w", err)
 	}
 
 	// Build instruction for the agent
@@ -209,7 +251,7 @@ func NewPreCallReportHandler(config PreCallReportConfig) (*PreCallReportHandler,
 	// Create LLM agent for report generation
 	reportAgent, err := llmagent.New(llmagent.Config{
 		Name:        "pre_call_report_agent",
-		Model:       model,
+		Model:       llm,
 		Description: "AI agent that generates comprehensive pre-call reports for sales leads based on company website data.",
 		Instruction: instruction,
 	})
@@ -230,10 +272,8 @@ func NewPreCallReportHandler(config PreCallReportConfig) (*PreCallReportHandler,
 		return nil, fmt.Errorf("failed to create runner: %w", err)
 	}
 
-	log.Printf("[PreCallReportHandler] Successfully initialized with model: %s (fallback: %s)", config.Model, config.FallbackModel)
-
-	// Note: model is stored internally by the agent, we don't need to keep a reference
-	_ = model
+	log.Printf("[PreCallReportHandler] Successfully initialized with model: %s (fallback: %s, backend: %s)",
+		config.Model, config.FallbackModel, backend)
 
 	return &PreCallReportHandler{
 		config:         config,
@@ -241,6 +281,8 @@ func NewPreCallReportHandler(config PreCallReportConfig) (*PreCallReportHandler,
 		runner:         r,
 		sessionService: sessionService,
 		clientConfig:   clientConfig,
+		backend:        backend,
+		primaryModel:   llm,
 	}, nil
 }
 
@@ -254,11 +296,25 @@ func (h *PreCallReportHandler) initFallbackAgent() error {
 
 	ctx := context.Background()
 
-	// Create fallback model
-	fallbackModel, err := gemini.NewModel(ctx, h.config.FallbackModel, h.clientConfig)
+	// Create fallback model based on backend
+	var fallbackLLM adkmodel.LLM
+	var err error
+
+	if h.backend == provider.BackendOpenRouter {
+		fallbackLLM, err = provider.NewModel(ctx, provider.Config{
+			Backend:           h.backend,
+			Model:             h.config.FallbackModel,
+			OpenRouterAPIKey:  h.config.OpenRouterAPIKey,
+			OpenRouterBaseURL: h.config.OpenRouterBaseURL,
+		})
+	} else {
+		fallbackLLM, err = gemini.NewModel(ctx, h.config.FallbackModel, h.clientConfig)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to create fallback model: %w", err)
 	}
+
+	h.fallbackModel = fallbackLLM
 
 	// Build instruction for the agent
 	instruction := buildAgentInstruction(h.config.CustomInstruction)
@@ -266,7 +322,7 @@ func (h *PreCallReportHandler) initFallbackAgent() error {
 	// Create fallback agent
 	h.fallbackAgent, err = llmagent.New(llmagent.Config{
 		Name:        "pre_call_report_agent_fallback",
-		Model:       fallbackModel,
+		Model:       fallbackLLM,
 		Description: "AI agent that generates comprehensive pre-call reports for sales leads based on company website data (fallback).",
 		Instruction: instruction,
 	})
