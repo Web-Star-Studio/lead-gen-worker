@@ -214,7 +214,7 @@ func (p *JobProcessor) meetsRequiredFields(data *handlers.ExtractedData, require
 			if len(data.Phones) == 0 {
 				return false
 			}
-		case "contact":
+		case "contact", "name":
 			if data.Contact == "" {
 				return false
 			}
