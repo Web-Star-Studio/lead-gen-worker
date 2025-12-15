@@ -716,12 +716,18 @@ func (h *ColdEmailHandler) buildPortugueseEmailPrompt(input EmailGenerationInput
 7. NÃO inclua rodapé, assinatura ou despedida (sem "Atenciosamente", "Cordialmente", nome, cargo, telefone, etc.)
 8. O email deve terminar com o call-to-action ou uma pergunta, SEM assinatura
 9. O email deve ter NO MÁXIMO 3 parágrafos curtos - seja conciso e direto
+10. A SAUDAÇÃO (ex: "Olá João, tudo bem?") DEVE estar SOZINHA no primeiro parágrafo, seguida de uma linha em branco antes do conteúdo
 
 **FORMATO DE RESPOSTA**:
 ASSUNTO: [apenas uma linha curta de assunto]
-CORPO: [email completo aqui - saudação, conteúdo e CTA integrado - SEM rodapé/assinatura]
+CORPO: [email completo aqui - saudação em parágrafo separado, conteúdo e CTA integrado - SEM rodapé/assinatura]
 
-**IMPORTANTE**: O ASSUNTO deve ser APENAS uma linha curta. O CORPO não deve ter assinatura no final.`
+**ESTRUTURA DO CORPO**:
+Parágrafo 1: APENAS a saudação (ex: "Olá [Nome], tudo bem?")
+Parágrafo 2: Conteúdo principal com personalização
+Parágrafo 3: CTA com pergunta
+
+**IMPORTANTE**: O ASSUNTO deve ser APENAS uma linha curta. O CORPO não deve ter assinatura no final. A saudação DEVE estar isolada no primeiro parágrafo.`
 
 	return prompt
 }
@@ -802,12 +808,18 @@ func (h *ColdEmailHandler) buildEnglishEmailPrompt(input EmailGenerationInput) s
 7. DO NOT include footer, signature or closing (no "Best regards", "Sincerely", name, title, phone, etc.)
 8. The email must end with the call-to-action or a question, WITHOUT signature
 9. The email must have AT MOST 3 short paragraphs - be concise and direct
+10. The GREETING (e.g., "Hi John, how are you?") MUST be ALONE in the first paragraph, followed by a blank line before the content
 
 **RESPONSE FORMAT**:
 SUBJECT: [only a short subject line]
-BODY: [complete email here - greeting, content and integrated CTA - NO footer/signature]
+BODY: [complete email here - greeting in separate paragraph, content and integrated CTA - NO footer/signature]
 
-**IMPORTANT**: SUBJECT must be ONLY a short line. BODY must NOT have signature at the end.`
+**BODY STRUCTURE**:
+Paragraph 1: ONLY the greeting (e.g., "Hi [Name], how are you?")
+Paragraph 2: Main content with personalization
+Paragraph 3: CTA with question
+
+**IMPORTANT**: SUBJECT must be ONLY a short line. BODY must NOT have signature at the end. The greeting MUST be isolated in the first paragraph.`
 
 	return prompt
 }
