@@ -96,6 +96,15 @@ func (m *Model) Name() string {
 // GenerateContent implements the model.LLM interface
 func (m *Model) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
 	return func(yield func(*model.LLMResponse, error) bool) {
+		// Acquire rate limiter slot to prevent burst requests
+		rateLimiter := GetGlobalRateLimiter()
+		release, err := rateLimiter.Acquire(ctx)
+		if err != nil {
+			yield(nil, fmt.Errorf("failed to acquire rate limiter: %w", err))
+			return
+		}
+		defer release()
+
 		// Convert ADK request to OpenAI format
 		openAIReq, err := m.convertRequest(req)
 		if err != nil {
