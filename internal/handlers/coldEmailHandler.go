@@ -848,10 +848,42 @@ func (h *ColdEmailHandler) parseEmailResponse(response string, email *ColdEmail)
 		email.PersonalizationNotes = extractEmailSection(response, "PERSONALIZATION NOTES")
 	}
 
-	// If parsing failed, store raw response in body
+	// If subject was found but body is empty, and subject is too long (contains newlines or > 100 chars),
+	// it means the AI didn't use proper markers - split by first newline
+	if email.Subject != "" && email.Body == "" {
+		if strings.Contains(email.Subject, "\n") || len(email.Subject) > 100 {
+			// Find first meaningful newline (after greeting like "Olá")
+			lines := strings.SplitN(email.Subject, "\n", 2)
+			if len(lines) == 2 {
+				email.Subject = strings.TrimSpace(lines[0])
+				email.Body = strings.TrimSpace(lines[1])
+				email.PlainTextBody = email.Body
+			}
+		}
+	}
+
+	// If parsing completely failed (no markers at all), try to extract from raw response
 	if email.Subject == "" && email.Body == "" {
-		email.Body = response
-		email.PlainTextBody = response
+		// Try splitting by first newline - first line is subject, rest is body
+		lines := strings.SplitN(strings.TrimSpace(response), "\n", 2)
+		if len(lines) >= 1 {
+			firstLine := strings.TrimSpace(lines[0])
+			// If first line looks like a subject (short, no greeting)
+			if len(firstLine) <= 100 && !strings.HasPrefix(strings.ToLower(firstLine), "olá") && !strings.HasPrefix(strings.ToLower(firstLine), "oi") {
+				email.Subject = firstLine
+				if len(lines) == 2 {
+					email.Body = strings.TrimSpace(lines[1])
+					email.PlainTextBody = email.Body
+				}
+			} else {
+				// Can't determine subject, put everything in body
+				email.Body = response
+				email.PlainTextBody = response
+			}
+		} else {
+			email.Body = response
+			email.PlainTextBody = response
+		}
 	}
 }
 
