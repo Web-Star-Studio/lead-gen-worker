@@ -67,20 +67,20 @@ type Lead struct {
 
 // LeadExtraData contains additional data from CNPJ imports
 type LeadExtraData struct {
-	CNPJ                string                 `json:"cnpj,omitempty"`
-	RazaoSocial         string                 `json:"razao_social,omitempty"`
-	NomeFantasia        string                 `json:"nome_fantasia,omitempty"`
-	Status              string                 `json:"status,omitempty"`
-	Capital             string                 `json:"capital,omitempty"`
-	FoundedAt           string                 `json:"founded_at,omitempty"`
-	CompanySize         string                 `json:"company_size,omitempty"`
-	LegalNature         string                 `json:"legal_nature,omitempty"`
-	CNAECode            string                 `json:"cnae_code,omitempty"`
-	CNAEDescription     string                 `json:"cnae_description,omitempty"`
-	Partners            []string               `json:"partners,omitempty"`
-	SecondaryActivities map[string]interface{} `json:"secondary_activities,omitempty"`
-	MEIOptante          bool                   `json:"mei_optante,omitempty"`
-	SimplesOptante      bool                   `json:"simples_optante,omitempty"`
+	CNPJ                string      `json:"cnpj,omitempty"`
+	RazaoSocial         string      `json:"razao_social,omitempty"`
+	NomeFantasia        string      `json:"nome_fantasia,omitempty"`
+	Status              string      `json:"status,omitempty"`
+	Capital             string      `json:"capital,omitempty"`
+	FoundedAt           string      `json:"founded_at,omitempty"`
+	CompanySize         string      `json:"company_size,omitempty"`
+	LegalNature         string      `json:"legal_nature,omitempty"`
+	CNAECode            string      `json:"cnae_code,omitempty"`
+	CNAEDescription     string      `json:"cnae_description,omitempty"`
+	Partners            []string    `json:"partners,omitempty"`
+	SecondaryActivities interface{} `json:"secondary_activities,omitempty"`
+	MEIOptante          bool        `json:"mei_optante,omitempty"`
+	SimplesOptante      bool        `json:"simples_optante,omitempty"`
 }
 
 // PreCallReportRecord represents a pre-call report record for insertion

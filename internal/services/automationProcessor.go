@@ -1043,11 +1043,29 @@ func buildContentFromExtraData(lead *dto.Lead) string {
 
 	// Secondary activities
 	if extra.SecondaryActivities != nil {
-		if descriptions, ok := extra.SecondaryActivities["descriptions"].([]interface{}); ok && len(descriptions) > 0 {
-			content.WriteString("\n## Atividades Secundárias\n")
-			for _, desc := range descriptions {
-				if str, ok := desc.(string); ok {
-					content.WriteString(fmt.Sprintf("- %s\n", str))
+		// Handle different formats: string, array, or map with descriptions
+		switch sa := extra.SecondaryActivities.(type) {
+		case string:
+			if sa != "" {
+				content.WriteString("\n## Atividades Secundárias\n")
+				content.WriteString(fmt.Sprintf("- %s\n", sa))
+			}
+		case []interface{}:
+			if len(sa) > 0 {
+				content.WriteString("\n## Atividades Secundárias\n")
+				for _, desc := range sa {
+					if str, ok := desc.(string); ok {
+						content.WriteString(fmt.Sprintf("- %s\n", str))
+					}
+				}
+			}
+		case map[string]interface{}:
+			if descriptions, ok := sa["descriptions"].([]interface{}); ok && len(descriptions) > 0 {
+				content.WriteString("\n## Atividades Secundárias\n")
+				for _, desc := range descriptions {
+					if str, ok := desc.(string); ok {
+						content.WriteString(fmt.Sprintf("- %s\n", str))
+					}
 				}
 			}
 		}
