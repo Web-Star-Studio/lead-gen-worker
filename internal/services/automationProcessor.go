@@ -280,10 +280,30 @@ func (p *AutomationProcessor) processEnrichment(ctx context.Context, leadIDs []s
 func (p *AutomationProcessor) enrichSingleLead(ctx context.Context, leadID string) dto.EnrichmentResult {
 	result := dto.EnrichmentResult{LeadID: leadID}
 
+	// Check required handlers
+	if p.firecrawlHandler == nil {
+		result.Error = "firecrawl handler not initialized"
+		automationLog.Error("Enrichment failed - firecrawl handler not initialized", map[string]interface{}{
+			"lead_id": leadID,
+		})
+		return result
+	}
+	if p.dataExtractorHandler == nil {
+		result.Error = "data extractor handler not initialized"
+		automationLog.Error("Enrichment failed - data extractor handler not initialized", map[string]interface{}{
+			"lead_id": leadID,
+		})
+		return result
+	}
+
 	// Get lead data
 	lead, err := p.supabase.GetLeadByID(leadID)
 	if err != nil {
 		result.Error = fmt.Sprintf("failed to get lead: %v", err)
+		automationLog.Error("Enrichment failed - could not get lead", map[string]interface{}{
+			"lead_id": leadID,
+			"error":   err.Error(),
+		})
 		return result
 	}
 
@@ -426,6 +446,22 @@ func (p *AutomationProcessor) processPreCallGeneration(ctx context.Context, lead
 func (p *AutomationProcessor) generatePreCallForLead(ctx context.Context, leadID string) dto.EnrichmentResult {
 	result := dto.EnrichmentResult{LeadID: leadID}
 
+	// Check required handlers
+	if p.preCallReportHandler == nil {
+		result.Error = "pre-call report handler not initialized"
+		automationLog.Error("Pre-call generation failed - handler not initialized", map[string]interface{}{
+			"lead_id": leadID,
+		})
+		return result
+	}
+	if p.firecrawlHandler == nil {
+		result.Error = "firecrawl handler not initialized"
+		automationLog.Error("Pre-call generation failed - firecrawl handler not initialized", map[string]interface{}{
+			"lead_id": leadID,
+		})
+		return result
+	}
+
 	// Check if lead already has a pre-call report (prevent duplicates)
 	hasPreCall, err := p.supabase.LeadHasPreCallReport(leadID)
 	if err != nil {
@@ -446,6 +482,10 @@ func (p *AutomationProcessor) generatePreCallForLead(ctx context.Context, leadID
 	lead, err := p.supabase.GetLeadByID(leadID)
 	if err != nil {
 		result.Error = fmt.Sprintf("failed to get lead: %v", err)
+		automationLog.Error("Pre-call generation failed - could not get lead", map[string]interface{}{
+			"lead_id": leadID,
+			"error":   err.Error(),
+		})
 		return result
 	}
 
@@ -502,12 +542,20 @@ func (p *AutomationProcessor) generatePreCallForLead(ctx context.Context, leadID
 
 	if !report.Success {
 		result.Error = fmt.Sprintf("failed to generate pre-call: %s", report.Error)
+		automationLog.Error("Pre-call generation failed - AI generation error", map[string]interface{}{
+			"lead_id": leadID,
+			"error":   report.Error,
+		})
 		return result
 	}
 
 	// Save to database
 	if err := p.supabase.InsertPreCallReport(leadID, report.CompanySummary); err != nil {
 		result.Error = fmt.Sprintf("failed to save pre-call: %v", err)
+		automationLog.Error("Pre-call generation failed - could not save to database", map[string]interface{}{
+			"lead_id": leadID,
+			"error":   err.Error(),
+		})
 		return result
 	}
 
@@ -580,6 +628,15 @@ func (p *AutomationProcessor) processEmailGeneration(ctx context.Context, leadID
 func (p *AutomationProcessor) generateEmailForLead(ctx context.Context, leadID string, profile *dto.BusinessProfile) dto.EnrichmentResult {
 	result := dto.EnrichmentResult{LeadID: leadID}
 
+	// Check required handlers
+	if p.coldEmailHandler == nil {
+		result.Error = "cold email handler not initialized"
+		automationLog.Error("Email generation failed - handler not initialized", map[string]interface{}{
+			"lead_id": leadID,
+		})
+		return result
+	}
+
 	// Check if lead already has an email (prevent duplicates)
 	hasEmail, err := p.supabase.LeadHasEmail(leadID)
 	if err != nil {
@@ -600,6 +657,10 @@ func (p *AutomationProcessor) generateEmailForLead(ctx context.Context, leadID s
 	lead, err := p.supabase.GetLeadByID(leadID)
 	if err != nil {
 		result.Error = fmt.Sprintf("failed to get lead: %v", err)
+		automationLog.Error("Email generation failed - could not get lead", map[string]interface{}{
+			"lead_id": leadID,
+			"error":   err.Error(),
+		})
 		return result
 	}
 
@@ -689,6 +750,10 @@ func (p *AutomationProcessor) generateEmailForLead(ctx context.Context, leadID s
 
 	if _, err := p.supabase.InsertColdEmail(emailRecord); err != nil {
 		result.Error = fmt.Sprintf("failed to save email: %v", err)
+		automationLog.Error("Email generation failed - could not save to database", map[string]interface{}{
+			"lead_id": leadID,
+			"error":   err.Error(),
+		})
 		return result
 	}
 
